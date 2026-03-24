@@ -1,0 +1,250 @@
+@baseUrl = http://localhost:3000
+@accessToken = COLE_ACCESS_TOKEN_AQUI
+@refreshToken = COLE_REFRESH_TOKEN_AQUI
+@userId = 00000000-0000-0000-0000-000000000000
+@roleId = 00000000-0000-0000-0000-000000000000
+@permissionId = 00000000-0000-0000-0000-000000000000
+@profileId = 00000000-0000-0000-0000-000000000000
+
+### =========================================================
+### AUTH MODULE
+### =========================================================
+
+### Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@email.com",
+  "password": "123456"
+}
+
+### Verify email
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "token": "email_verification_token"
+}
+
+### Forgot password
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "user@email.com"
+}
+
+### Reset password
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "reset_password_token",
+  "password": "NovaSenha@123"
+}
+
+### Refresh token
+POST {{baseUrl}}/auth/refresh
+Authorization: Bearer {{refreshToken}}
+
+### Logout
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
+
+### =========================================================
+### USER MODULE
+### =========================================================
+
+### Create simple user (public)
+POST {{baseUrl}}/users/new
+Content-Type: application/json
+
+{
+  "email": "novo@email.com",
+  "password": "Senha@123"
+}
+
+### Create admin user
+POST {{baseUrl}}/users/new-admin
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "email": "admin@email.com",
+  "password": "Senha@123"
+}
+
+### List users
+GET {{baseUrl}}/users?page=1&limit=10
+Authorization: Bearer {{accessToken}}
+
+### Get user by id
+GET {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{accessToken}}
+
+### Add role to user
+POST {{baseUrl}}/users/{{userId}}/roles/{{roleId}}
+Authorization: Bearer {{accessToken}}
+
+### Remove role from user
+DELETE {{baseUrl}}/users/{{userId}}/roles/{{roleId}}
+Authorization: Bearer {{accessToken}}
+
+### Update user password
+PATCH {{baseUrl}}/users/{{userId}}/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "Senha@123",
+  "newPassword": "NovaSenha@123"
+}
+
+### Resend verification email (public)
+POST {{baseUrl}}/users/resend-verification
+Content-Type: application/json
+
+{
+  "email": "novo@email.com"
+}
+
+### Update user status
+PATCH {{baseUrl}}/users/{{userId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "ACTIVE"
+}
+
+### Delete myself
+DELETE {{baseUrl}}/users/me
+Authorization: Bearer {{accessToken}}
+
+### Delete user by id
+DELETE {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{accessToken}}
+
+### Restore user by id
+POST {{baseUrl}}/users/{{userId}}/restore
+Authorization: Bearer {{accessToken}}
+
+### =========================================================
+### PROFILE MODULE
+### =========================================================
+
+### Create profile
+POST {{baseUrl}}/profiles
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "username": "meu_perfil",
+  "description": "Descricao do perfil"
+}
+
+### List profiles
+GET {{baseUrl}}/profiles?page=1&limit=10
+Authorization: Bearer {{accessToken}}
+
+### Get my profile
+GET {{baseUrl}}/profiles/me
+Authorization: Bearer {{accessToken}}
+
+### Get profile by id
+GET {{baseUrl}}/profiles/{{profileId}}
+Authorization: Bearer {{accessToken}}
+
+### Update my profile
+PATCH {{baseUrl}}/profiles/me
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "description": "Descricao atualizada"
+}
+
+### Verify profile
+PATCH {{baseUrl}}/profiles/{{profileId}}/verify
+Authorization: Bearer {{accessToken}}
+
+### Unverify profile
+PATCH {{baseUrl}}/profiles/{{profileId}}/unverify
+Authorization: Bearer {{accessToken}}
+
+### Delete my profile
+DELETE {{baseUrl}}/profiles/me
+Authorization: Bearer {{accessToken}}
+
+### =========================================================
+### ROLE MODULE
+### =========================================================
+
+### Create role
+POST {{baseUrl}}/roles
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "manager"
+}
+
+### List roles
+GET {{baseUrl}}/roles?page=1&limit=10
+Authorization: Bearer {{accessToken}}
+
+### Get default role
+GET {{baseUrl}}/roles/default
+Authorization: Bearer {{accessToken}}
+
+### Get role by id
+GET {{baseUrl}}/roles/{{roleId}}
+Authorization: Bearer {{accessToken}}
+
+### Unset default role
+PATCH {{baseUrl}}/roles/{{roleId}}/unset-default
+Authorization: Bearer {{accessToken}}
+
+### Add permission to role
+POST {{baseUrl}}/roles/{{roleId}}/permissions/{{permissionId}}
+Authorization: Bearer {{accessToken}}
+
+### Remove role
+DELETE {{baseUrl}}/roles/{{roleId}}
+Authorization: Bearer {{accessToken}}
+
+### Remove permission from role
+DELETE {{baseUrl}}/roles/{{roleId}}/permissions/{{permissionId}}
+Authorization: Bearer {{accessToken}}
+
+### =========================================================
+### PERMISSION MODULE
+### =========================================================
+
+### Create permission
+POST {{baseUrl}}/permissions
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "action": "READ",
+  "resource": "USER",
+  "description": "Permite ler usuarios"
+}
+
+### List permissions
+GET {{baseUrl}}/permissions?page=1&limit=10
+Authorization: Bearer {{accessToken}}
+
+### Get permission by id
+GET {{baseUrl}}/permissions/{{permissionId}}
+Authorization: Bearer {{accessToken}}
+
+### Remove permission
+DELETE {{baseUrl}}/permissions/{{permissionId}}
+Authorization: Bearer {{accessToken}}
+
+### Remove permission from role
+DELETE {{baseUrl}}/permissions/{{permissionId}}/roles/{{roleId}}
+Authorization: Bearer {{accessToken}}
