@@ -21,8 +21,8 @@ export class JwtAccessTokenStrategy extends PassportStrategy(
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: config.secret,
-      audience: config.audience, // validação consistente
-      issuer: config.issuer, // com o JwtRefreshStrategy
+      audience: config.audience,
+      issuer: config.issuer,
     });
   }
 

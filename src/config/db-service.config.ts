@@ -17,7 +17,7 @@ export class DbServiceConfig implements TypeOrmOptionsFactory {
       database: this.configService.get<string>(ENV_KEYS.DB_NAME),
       entities: [__dirname + "/../**/*.entity{.ts,.js}"],
       synchronize: this.configService.get<boolean>(ENV_KEYS.DB_SYNCHRONIZE),
-      logging: ["warn", "query", "error", "migration", "schema"],
+      logging: ["warn", "error", "migration", "schema"],
     };
   }
 }

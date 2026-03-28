@@ -52,6 +52,18 @@ export class UserEntity {
   @Column({ type: "timestamp", nullable: true })
   lastLoginAt: Date | null;
 
+  @Column({ default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ type: "timestamp", nullable: true })
+  lastFailedLoginAt: Date | null;
+
+  @Column({ default: false })
+  isLocked: boolean;
+
+  @Column({ type: "timestamp", nullable: true })
+  passwordChangedAt: Date | null;
+
   @ManyToMany(() => RoleEntity, (role) => role.users, {
     eager: false,
   })

@@ -11,130 +11,131 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import { UserEntity } from "./entity/user.entity";
 import { RoleEntity } from "../role/entity/role.entity";
+import { ListUsersQueryDto } from "./dto/list-users-query.dto";
 
 @Injectable()
 export class UsersRepository {
   constructor(
     @InjectRepository(UserEntity)
-    private readonly repo: Repository<UserEntity>,
+    private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(RoleEntity)
-    private readonly roleRepo: Repository<RoleEntity>,
+    private readonly roleRepository: Repository<RoleEntity>,
     private readonly dataSource: DataSource,
   ) {}
-  // Alias para uso no QueryBuilder
+
   private readonly USER_ALIAS = "user";
 
   // ========================================
   // ================= READ =================
   // ========================================
 
-  // Buscar usuário por id com suas permissions
   async findUserById(id: string): Promise<UserEntity | null> {
-    return this.repo.findOne({
+    return this.userRepository.findOne({
       where: { id },
       relations: { roles: { permissions: true } },
     });
   }
 
-  // Buscando usuário com o rafreshToken
   async findUserByIdWithRefreshToken(id: string): Promise<UserEntity | null> {
-    return this.repo
-      .createQueryBuilder(this.USER_ALIAS)
-      .addSelect("user.refreshToken")
-      .where("user.id = :id", { id })
+    const u = this.USER_ALIAS;
+
+    return this.userRepository
+      .createQueryBuilder(u)
+      .addSelect(`${u}.refreshToken`)
+      .where(`${u}.id = :id`, { id })
       .getOne();
   }
 
-  // Buscando usuário pelo email
   async findUserByEmail(email: string): Promise<UserEntity | null> {
-    return this.repo.findOne({ where: { email } });
+    return this.userRepository.findOne({ where: { email } });
   }
 
-  // Buscando usuário com sua password
   async findUserByEmailWithPassword(email: string): Promise<UserEntity | null> {
-    return this.repo
-      .createQueryBuilder(this.USER_ALIAS)
-      .addSelect("user.password")
-      .leftJoinAndSelect("user.roles", "roles")
-      .leftJoinAndSelect("roles.permissions", "permissions")
-      .where("user.email = :email", { email })
+    const u = this.USER_ALIAS;
+
+    return this.userRepository
+      .createQueryBuilder(u)
+      .addSelect(`${u}.password`)
+      .leftJoinAndSelect(`${u}.roles`, "roles") // ← adicionar isso
+      .where(`${u}.email = :email`, { email })
       .getOne();
   }
 
-  // Buscando usuário pelo token de verificação
   async findUserByEmailVerificationToken(
     token: string,
   ): Promise<UserEntity | null> {
-    return this.repo
-      .createQueryBuilder(this.USER_ALIAS)
+    const u = this.USER_ALIAS;
+
+    return this.userRepository
+      .createQueryBuilder(u)
       .addSelect([
-        "user.emailVerificationToken",
-        "user.emailVerificationTokenExpiresAt",
+        `${u}.emailVerificationToken`,
+        `${u}.emailVerificationTokenExpiresAt`,
       ])
-      .where("user.emailVerificationToken = :token", { token })
+      .where(`${u}.emailVerificationToken = :token`, { token })
       .getOne();
   }
 
-  // Buscando usuário com o rafreshToken
   async findUserByPasswordResetToken(
     token: string,
   ): Promise<UserEntity | null> {
-    return this.repo
-      .createQueryBuilder(this.USER_ALIAS)
-      .addSelect(["user.passwordResetToken", "user.passwordResetExpiresAt"])
-      .where("user.passwordResetToken = :token", { token })
+    const u = this.USER_ALIAS;
+
+    return this.userRepository
+      .createQueryBuilder(u)
+      .addSelect([`${u}.passwordResetToken`, `${u}.passwordResetExpiresAt`])
+      .where(`${u}.passwordResetToken = :token`, { token })
       .getOne();
   }
 
-  // Buscando todos os usuários com suas permissões
   async findAll(): Promise<UserEntity[]> {
-    return this.repo.find({
+    return this.userRepository.find({
       relations: { roles: { permissions: true } },
     });
   }
 
-  // Buscando usuários com paginação
-  async findAllByQuery(params: {
-    status?: string;
-    email?: string; // ← novo
-    sortBy?: string;
-    sortOrder?: "ASC" | "DESC";
-    page: number;
-    limit: number;
-    includeDeleted?: boolean;
-  }): Promise<[UserEntity[], number]> {
+  async findAllByQuery(
+    query: ListUsersQueryDto,
+  ): Promise<[UserEntity[], number]> {
     const {
       status,
       email,
+      includeLocked,
       sortBy = "createdAt",
       sortOrder = "DESC",
-      page,
-      limit,
+      page = 1,
+      limit = 10,
       includeDeleted = false,
-    } = params;
+    } = query;
 
+    const u = this.USER_ALIAS;
     const skip = (page - 1) * limit;
 
-    const qb = this.repo
-      .createQueryBuilder(this.USER_ALIAS)
-      .leftJoinAndSelect("user.roles", "roles")
+    const qb = this.userRepository
+      .createQueryBuilder(u)
+      .leftJoinAndSelect(`${u}.roles`, "roles")
       .leftJoinAndSelect("roles.permissions", "permissions")
-      .leftJoinAndSelect("user.profile", "profile");
+      .leftJoinAndSelect(`${u}.profile`, "profile");
 
     if (status) {
-      qb.andWhere("user.status = :status", { status });
+      qb.andWhere(`${u}.status = :status`, { status });
     }
 
     if (email) {
-      // ILIKE = case-insensitive no PostgreSQL
-      qb.andWhere("user.email ILIKE :email", { email: `%${email}%` });
+      qb.andWhere(`${u}.email ILIKE :email`, { email: `%${email}%` });
+    }
+
+    if (includeLocked !== undefined) {
+      qb.andWhere(`${u}.isLocked = :isLocked`, {
+        isLocked: includeLocked === "true",
+      });
     }
 
     if (includeDeleted) {
       qb.withDeleted();
     }
 
-    qb.orderBy(`user.${sortBy}`, sortOrder, "NULLS LAST")
+    qb.orderBy(`${u}.${sortBy}`, sortOrder, "NULLS LAST")
       .skip(skip)
       .take(limit);
 
@@ -142,13 +143,15 @@ export class UsersRepository {
   }
 
   async findByIdWithPassword(id: string): Promise<UserEntity | null> {
-    return this.repo
-      .createQueryBuilder(this.USER_ALIAS)
-      .addSelect("user.password")
-      .leftJoinAndSelect("user.roles", "roles")
+    const u = this.USER_ALIAS;
+
+    return this.userRepository
+      .createQueryBuilder(u)
+      .addSelect(`${u}.password`)
+      .leftJoinAndSelect(`${u}.roles`, "roles")
       .leftJoinAndSelect("roles.permissions", "permissions")
-      .leftJoinAndSelect("user.profile", "profile")
-      .where("user.id = :id", { id })
+      .leftJoinAndSelect(`${u}.profile`, "profile")
+      .where(`${u}.id = :id`, { id })
       .getOne();
   }
 
@@ -156,10 +159,9 @@ export class UsersRepository {
   // ============== CREATE ==================
   // ========================================
 
-  // Criando usuário
   async create(data: Partial<UserEntity>): Promise<UserEntity> {
-    const user = this.repo.create(data);
-    return this.repo.save(user);
+    const user = this.userRepository.create(data);
+    return this.userRepository.save(user);
   }
 
   // ========================================
@@ -167,22 +169,21 @@ export class UsersRepository {
   // ========================================
 
   async softDelete(id: string): Promise<void> {
-    await this.repo.softDelete(id);
+    await this.userRepository.softDelete(id);
   }
 
   async hardDelete(id: string): Promise<void> {
-    await this.repo.delete(id);
+    await this.userRepository.delete(id);
   }
 
   async restore(id: string): Promise<void> {
-    await this.repo.restore(id);
+    await this.userRepository.restore(id);
   }
 
   // ========================================
   // ============== UPDATE ==================
   // ========================================
 
-  // Adicionar role a um usuário
   async addRoleToUser(
     userId: string,
     roleId: string,
@@ -212,14 +213,12 @@ export class UsersRepository {
         throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
       }
 
-      // Só isSystem pode atribuir roles isSystem
       if (role.isSystem && !currentUserIsSystem) {
         throw new ForbiddenException(
           `Apenas usuários de sistema podem atribuir a role "${role.name}"`,
         );
       }
 
-      // Verifica se já está associada
       const alreadyHasRole = user.roles.some((r) => r.id === roleId);
       if (alreadyHasRole) {
         throw new ConflictException(
@@ -229,6 +228,7 @@ export class UsersRepository {
 
       user.roles.push(role);
       await queryRunner.manager.save(UserEntity, user);
+
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -249,7 +249,6 @@ export class UsersRepository {
     }
   }
 
-  // Remover role de um usuário
   async removeRoleFromUser(
     userId: string,
     roleId: string,
@@ -278,7 +277,6 @@ export class UsersRepository {
         throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
       }
 
-      // Só isSystem pode remover roles isSystem
       if (role.isSystem && !currentUserIsSystem) {
         throw new ForbiddenException(
           `Apenas usuários de sistema podem remover a role "${role.name}"`,
@@ -318,8 +316,7 @@ export class UsersRepository {
     }
   }
 
-  // Atualizando informações do usuário
   async update(id: string, data: Partial<UserEntity>): Promise<void> {
-    await this.repo.update(id, data);
+    await this.userRepository.update(id, data);
   }
 }

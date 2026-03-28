@@ -11,8 +11,6 @@ import { PermissionEntity } from "./entity/permission.entity";
 import { QueryPermissionDto } from "./dto/query-permission.dto";
 import { PermissionAction } from "src/common/enums/permission-action.enum";
 import { PermissionResource } from "src/common/enums/permission-resource.enum";
-import { RoleEntity } from "../role/entity/role.entity";
-
 @Injectable()
 export class PermissionRepository {
   constructor(
@@ -79,7 +77,6 @@ export class PermissionRepository {
   // ============ READ ===========
   // =============================
 
-  // Busca permissões com filtros, paginação e ordenação
   async findAllWithFilters(
     queryDto: QueryPermissionDto,
   ): Promise<[PermissionEntity[], number]> {
@@ -91,7 +88,6 @@ export class PermissionRepository {
         .createQueryBuilder("permission")
         .leftJoinAndSelect("permission.roles", "role");
 
-    // Aplicar filtros
     if (action) {
       queryBuilder.andWhere("permission.action = :action", { action });
     }
@@ -110,14 +106,11 @@ export class PermissionRepository {
       queryBuilder.andWhere("role.id = :roleId", { roleId });
     }
 
-    // Aplicar ordenação
     queryBuilder.orderBy(`permission.${sortBy}`, sortOrder);
 
-    // Aplicar paginação
     const skip = (page - 1) * limit;
     queryBuilder.skip(skip).take(limit);
 
-    // Retorna [dados, total]
     return await queryBuilder.getManyAndCount();
   }
 
@@ -148,70 +141,6 @@ export class PermissionRepository {
   // ========== DELETE ===========
   // =============================
 
-  async removeRoleFromPermission(
-    permissionId: string,
-    roleId: string,
-  ): Promise<void> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      // Verifica se a permissão existe
-      const permission = await queryRunner.manager.findOne(PermissionEntity, {
-        where: { id: permissionId },
-      });
-
-      if (!permission) {
-        throw new NotFoundException(
-          `Permissão com ID "${permissionId}" não encontrada`,
-        );
-      }
-
-      // Verifica se a role existe
-      const role = await queryRunner.manager.findOne(RoleEntity, {
-        where: { id: roleId },
-      });
-
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
-      }
-
-      // DELETE direto na tabela intermediária
-      const result = await queryRunner.manager
-        .createQueryBuilder()
-        .delete()
-        .from("role_permissions")
-        .where("role_id = :roleId", { roleId })
-        .andWhere("permission_id = :permissionId", { permissionId })
-        .execute();
-
-      // Verifica se a associação existia
-      if (result.affected === 0) {
-        throw new NotFoundException(
-          `A role "${role.name}" não está associada a esta permissão`,
-        );
-      }
-
-      await queryRunner.commitTransaction();
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ConflictException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        "Erro ao remover role da permissão. Tente novamente mais tarde.",
-      );
-    } finally {
-      await queryRunner.release();
-    }
-  }
-
   async delete(id: string, currentUserIsSystem: boolean): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -220,7 +149,7 @@ export class PermissionRepository {
     try {
       const permission = await queryRunner.manager.findOne(PermissionEntity, {
         where: { id },
-        // Só carrega roles se precisar validar se alguma esta ligada a uma role isSystem— evita join desnecessário
+
         relations: currentUserIsSystem ? [] : ["roles"],
       });
 
@@ -228,7 +157,6 @@ export class PermissionRepository {
         throw new NotFoundException(`Permissão com ID "${id}" não encontrada`);
       }
 
-      // Só valida se o usuário não for isSystem
       if (!currentUserIsSystem) {
         const linkedToSystemRole = permission.roles.some(
           (role) => role.isSystem,
@@ -269,6 +197,21 @@ export class PermissionRepository {
       );
     } finally {
       await queryRunner.release();
+    }
+  }
+
+  async removeFromAllRoles(permissionId: string): Promise<void> {
+    try {
+      await this.dataSource
+        .createQueryBuilder()
+        .delete()
+        .from("role_permissions")
+        .where("permission_id = :permissionId", { permissionId })
+        .execute();
+    } catch {
+      throw new InternalServerErrorException(
+        "Erro ao remover vínculos da permissão com roles",
+      );
     }
   }
 }

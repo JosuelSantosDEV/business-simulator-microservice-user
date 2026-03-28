@@ -24,7 +24,7 @@ export class RoleService {
     currentUser: UserEntity,
   ): Promise<RoleEntity> {
     const currentUserIsSystem = currentUser?.roles?.some((r) => r.isSystem);
-    // Só isSystem pode criar role isSystem
+
     if (createRoleDto.isSystem && !currentUserIsSystem) {
       throw new ForbiddenException(
         "Apenas usuários de sistema podem criar roles de sistema",
@@ -71,9 +71,18 @@ export class RoleService {
   // ============ UPDATE =========
   // =============================
 
-  async unsetDefaultRole(id: string): Promise<{ message: string }> {
-    await this.roleRepository.removeIsDefault(id);
-    return { message: "Role padrão removida com sucesso" };
+  async toggleDefaultRole(id: string): Promise<{
+    isDefault: boolean;
+    message: string;
+  }> {
+    const role = await this.roleRepository.toggleDefaultRole(id);
+
+    return {
+      isDefault: role.isDefault,
+      message: role.isDefault
+        ? `"${role.name}" agora é a role padrão. Qualquer outra foi desmarcada.`
+        : `"${role.name}" deixou de ser a role padrão.`,
+    };
   }
 
   async addPermissionToRole(
@@ -120,6 +129,18 @@ export class RoleService {
     await this.roleRepository.removePermissionFromRole(
       roleId,
       permissionId,
+      currentUserIsSystem,
+    );
+  }
+
+  async removeAllPermissionsFromRole(
+    roleId: string,
+    currentUser: UserEntity,
+  ): Promise<void> {
+    const currentUserIsSystem = currentUser?.roles?.some((r) => r.isSystem);
+
+    await this.roleRepository.removeAllPermissionsFromRole(
+      roleId,
       currentUserIsSystem,
     );
   }

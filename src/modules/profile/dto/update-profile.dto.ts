@@ -1,6 +1,5 @@
 import { IsString, IsOptional, Length, IsUrl } from "class-validator";
 
-// username e displayName são imutáveis — não aparecem aqui
 export class UpdateProfileDto {
   @IsOptional()
   @IsString()

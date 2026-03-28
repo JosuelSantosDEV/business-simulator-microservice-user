@@ -17,9 +17,9 @@ import { JwtRefreshTokenStrategy } from "./strategies/jwt-refresh-token.strategy
     ConfigModule.forFeature(jwtConfig),
     HashingModule,
     PassportModule,
-    UserModule, // precisa estar aqui para o JwtStrategy ter acesso ao UsersService
+    UserModule,
     JwtModule.registerAsync({
-      imports: [ConfigModule.forFeature(jwtConfig)], // carrega aqui o registerAs de configuraçẽos
+      imports: [ConfigModule.forFeature(jwtConfig)],
       inject: [jwtConfig.KEY],
       useFactory: (config: ConfigType<typeof jwtConfig>) => ({
         secret: config.secret,
@@ -31,11 +31,7 @@ import { JwtRefreshTokenStrategy } from "./strategies/jwt-refresh-token.strategy
       }),
     }),
   ],
-  providers: [
-    AuthService,
-    JwtAccessTokenStrategy, // registrado aqui
-    JwtRefreshTokenStrategy, // registrado aqui
-  ],
+  providers: [AuthService, JwtAccessTokenStrategy, JwtRefreshTokenStrategy],
   controllers: [AuthController],
   exports: [AuthService],
 })

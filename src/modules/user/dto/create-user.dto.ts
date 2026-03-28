@@ -12,7 +12,7 @@ export class CreateUserDto {
   @IsEmail({}, { message: "O e-mail informado não é válido." })
   @IsNotEmpty({ message: "O e-mail é obrigatório." })
   @MaxLength(255)
-  @Transform(({ value }) => value?.trim().toLowerCase()) // Sanitização importante
+  @Transform(({ value }) => value?.trim().toLowerCase())
   email: string;
 
   @IsString()

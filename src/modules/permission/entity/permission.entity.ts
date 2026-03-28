@@ -20,18 +20,17 @@ export class PermissionEntity {
   id: string;
 
   @Column({ type: "varchar", length: 100 })
-  action: PermissionAction; // ex: "create"
+  action: PermissionAction;
 
   @Column({ type: "varchar", length: 100 })
-  resource: PermissionResource; // ex: "user"
+  resource: PermissionResource;
 
   @Column({ type: "varchar", length: 255, unique: true })
-  name: string; // ex: "create:user" — gerado automaticamente
+  name: string;
 
   @Column({ type: "varchar", length: 255, nullable: true })
   description: string | null;
 
-  // Mapeamento inverso para permitir buscas mais elaboradas
   @ManyToMany(() => RoleEntity, (role) => role.permissions)
   roles: RoleEntity[];
 

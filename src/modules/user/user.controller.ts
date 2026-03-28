@@ -21,17 +21,15 @@ import {
 } from "../../common/decorators/require-permissions.decorator";
 import { PermissionAction } from "src/common/enums/permission-action.enum";
 import { PermissionResource } from "src/common/enums/permission-resource.enum";
-import {
-  CreateUserDto,
-  UpdatePasswordDto,
-  UserResponseDto,
-  ListUsersQueryDto,
-} from "./dto";
 import { PublicRoute } from "../../common/decorators/public-route.decorator";
 import { UserEntity } from "./entity/user.entity";
 import { CurrentUser } from "src/common/decorators/current-user.decorator";
 import { ResendEmailVerificationTokenDto } from "./dto/resend-email-verification-token.dto";
 import { UpdateStatusDto } from "./dto/update-status.dto";
+import { CreateUserDto } from "./dto/create-user.dto";
+import { ListUsersQueryDto } from "./dto/list-users-query.dto";
+import { UserResponseDto } from "./dto/user-response.dto";
+import { UpdatePasswordDto } from "./dto/update-password.dto";
 
 const READ_USER: RequiredPermission = {
   action: PermissionAction.READ,
@@ -49,8 +47,6 @@ const DELETE_USER: RequiredPermission = {
   action: PermissionAction.DELETE,
   resource: PermissionResource.USER,
 };
-
-// Recebe email, nova senha e o codigo de verificação e troca a senha e reseta o verificador e deleta a resetPasswordAt
 
 @Controller("users")
 @UseGuards(JwtAccessTokenGuard, PermissionsGuard)
@@ -71,7 +67,6 @@ export class UserController {
         "Conta criada com sucesso! Verifique seu email para ativar sua conta antes de fazer login.",
       requiresEmailVerification: true,
     };
-    // Não retornamos dados do usuário — não há motivo para expô-los antes da verificação
   }
 
   @Post("new-admin")
@@ -89,15 +84,7 @@ export class UserController {
   @Get()
   @RequirePermissions(READ_USER)
   async findAll(@Query() query: ListUsersQueryDto) {
-    const result = await this.usersService.findAllByQuery({
-      status: query.status,
-      email: query.email,
-      sortBy: query.sortBy,
-      sortOrder: query.sortOrder,
-      page: query.page ?? 1,
-      limit: query.limit ?? 10,
-      includeDeleted: query.includeDeleted === "true",
-    });
+    const result = await this.usersService.findAllByQuery(query);
 
     return {
       data: result.data.map((u) => UserResponseDto.fromEntity(u)),
@@ -161,7 +148,6 @@ export class UserController {
   @HttpCode(HttpStatus.OK)
   async resendVerification(@Body() dto: ResendEmailVerificationTokenDto) {
     await this.usersService.resendVerificationEmail(dto.email);
-    // Sempre a mesma resposta — não revelamos se o email existe ou já foi verificado
     return {
       message:
         "Se o email existir e ainda não foi verificado, você receberá um novo link em instantes.",
@@ -178,6 +164,7 @@ export class UserController {
   ) {
     return this.usersService.updateStatus(id, dto.status, currentUser);
   }
+
   // ========================================
   // ================ DELETE ================
   // ========================================
@@ -185,14 +172,14 @@ export class UserController {
   @Delete("me")
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteMe(@CurrentUser() currentUser: UserEntity) {
-    await this.usersService.remove(currentUser.id);
+    await this.usersService.remove(currentUser);
   }
 
   @Delete(":id")
   @RequirePermissions(DELETE_USER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param("id", ParseUUIDPipe) id: string) {
-    await this.usersService.remove(id);
+  async remove(@CurrentUser() currentUser: UserEntity) {
+    await this.usersService.remove(currentUser);
   }
 
   @Post(":id/restore")

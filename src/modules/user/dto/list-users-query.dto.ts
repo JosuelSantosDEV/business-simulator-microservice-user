@@ -47,4 +47,8 @@ export class ListUsersQueryDto {
   @IsOptional()
   @IsIn(["true", "false"])
   includeDeleted?: "true" | "false";
+
+  @IsOptional()
+  @IsIn(["true", "false"])
+  includeLocked?: "true" | "false";
 }

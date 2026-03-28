@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, Repository, SelectQueryBuilder } from "typeorm";
+import {
+  DataSource,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+} from "typeorm";
 import { RoleEntity } from "./entity/role.entity";
 import { PermissionEntity } from "../permission/entity/permission.entity";
 import { CreateRoleDto } from "./dto/create-role.dto";
@@ -20,6 +25,12 @@ export class RoleRepository {
     private readonly dataSource: DataSource,
   ) {}
 
+  private async clearDefaultFromAllRoles(
+    manager: EntityManager,
+  ): Promise<void> {
+    await manager.update(RoleEntity, { isDefault: true }, { isDefault: false });
+  }
+
   // =============================
   // ========== CREATE ===========
   // =============================
@@ -30,7 +41,6 @@ export class RoleRepository {
     await queryRunner.startTransaction();
 
     try {
-      // Verifica nome duplicado
       const existing = await queryRunner.manager.findOne(RoleEntity, {
         where: { name: createRoleDto.name },
       });
@@ -41,17 +51,8 @@ export class RoleRepository {
         );
       }
 
-      // Se isDefault: true, garante que não existe outra
       if (createRoleDto.isDefault) {
-        const currentDefault = await queryRunner.manager.findOne(RoleEntity, {
-          where: { isDefault: true },
-        });
-
-        if (currentDefault) {
-          throw new ConflictException(
-            `Já existe uma role padrão: "${currentDefault.name}". Remova o isDefault dela antes de criar outra`,
-          );
-        }
+        await this.clearDefaultFromAllRoles(queryRunner.manager);
       }
 
       const role = queryRunner.manager.create(RoleEntity, {
@@ -136,7 +137,6 @@ export class RoleRepository {
 
   async findById(id: string): Promise<RoleEntity> {
     try {
-      // Sem permissions — podem ser paginadas via GET /permissions?roleId=
       const role = await this.RoleRepository.findOne({
         where: { id },
       });
@@ -163,16 +163,48 @@ export class RoleRepository {
   // ========== UPDATE ===========
   // =============================
 
-  async removeIsDefault(id: string): Promise<void> {
-    const result = await this.RoleRepository.update(
-      { id, isDefault: true },
-      { isDefault: false },
-    );
+  async toggleDefaultRole(id: string): Promise<RoleEntity> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (result.affected === 0) {
-      throw new NotFoundException(
-        `Role com ID "${id}" não encontrada ou não é a role padrão`,
+    try {
+      const role = await queryRunner.manager.findOne(RoleEntity, {
+        where: { id },
+      });
+
+      if (!role) {
+        throw new NotFoundException(`Role com ID "${id}" não encontrada`);
+      }
+
+      if (role.isDefault) {
+        role.isDefault = false;
+        await queryRunner.manager.save(RoleEntity, role);
+        await queryRunner.commitTransaction();
+        return role;
+      }
+
+      await this.clearDefaultFromAllRoles(queryRunner.manager);
+
+      role.isDefault = true;
+      await queryRunner.manager.save(RoleEntity, role);
+      await queryRunner.commitTransaction();
+      return role;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ConflictException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        "Erro ao alternar role padrão. Tente novamente mais tarde.",
       );
+    } finally {
+      await queryRunner.release();
     }
   }
 
@@ -245,7 +277,6 @@ export class RoleRepository {
         throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
       }
 
-      // Só isSystem pode modificar roles de sistema
       if (role.isSystem && !currentUserIsSystem) {
         throw new ForbiddenException(
           `Não é possível modificar a role "${role.name}" pois ela é uma role de sistema`,
@@ -309,7 +340,6 @@ export class RoleRepository {
         throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
       }
 
-      // Só isSystem pode modificar roles de sistema
       if (role.isSystem && !currentUserIsSystem) {
         throw new ForbiddenException(
           `Não é possível modificar a role "${role.name}" pois ela é uma role de sistema`,
@@ -353,6 +383,55 @@ export class RoleRepository {
 
       throw new InternalServerErrorException(
         "Erro ao remover permissão da role. Tente novamente mais tarde.",
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async removeAllPermissionsFromRole(
+    roleId: string,
+    currentUserIsSystem: boolean,
+  ): Promise<void> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const role = await queryRunner.manager.findOne(RoleEntity, {
+        where: { id: roleId },
+      });
+
+      if (!role) {
+        throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
+      }
+
+      if (role.isSystem && !currentUserIsSystem) {
+        throw new ForbiddenException(
+          `Não é possível modificar a role "${role.name}" pois ela é uma role de sistema`,
+        );
+      }
+
+      await queryRunner.manager
+        .createQueryBuilder()
+        .delete()
+        .from("role_permissions")
+        .where("role_id = :roleId", { roleId })
+        .execute();
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        "Erro ao remover todas permissões da role",
       );
     } finally {
       await queryRunner.release();

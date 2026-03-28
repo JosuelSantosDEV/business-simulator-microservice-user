@@ -7,6 +7,9 @@ export class UserResponseDto {
   status: UserStatus;
   emailVerifiedAt: Date | null;
   lastLoginAt: Date | null;
+  failedLoginAttempts: number;
+  lastFailedLoginAt: Date | null;
+  isLocked: boolean;
   roles: { id: string; name: string }[];
   profile?: { id: string; username: string } | null;
   createdAt: Date;
@@ -20,6 +23,9 @@ export class UserResponseDto {
     dto.status = entity.status;
     dto.emailVerifiedAt = entity.emailVerifiedAt;
     dto.lastLoginAt = entity.lastLoginAt;
+    dto.failedLoginAttempts = entity.failedLoginAttempts;
+    dto.lastFailedLoginAt = entity.lastFailedLoginAt;
+    dto.isLocked = entity.isLocked;
     dto.roles = (entity.roles || []).map((r) => ({ id: r.id, name: r.name }));
     dto.profile = entity.profile
       ? { id: entity.profile.id, username: entity.profile.username }

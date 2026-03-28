@@ -3,12 +3,14 @@
 Base path: `/profiles`
 
 ## Regras gerais
+
 - Login: Sim (todas as rotas usam `JwtAccessTokenGuard`).
 - Permissão RBAC: Não (este módulo não usa `@RequirePermissions` no controller).
 
 ## Rotas
 
 ### `POST /profiles`
+
 - Descrição: Cria o perfil do usuário autenticado.
 - Login: Sim
 - Permissão: Não
@@ -24,6 +26,7 @@ Base path: `/profiles`
 - Status: `201`
 
 ### `GET /profiles`
+
 - Descrição: Lista perfis com filtros e paginação.
 - Login: Sim
 - Permissão: Não
@@ -41,6 +44,7 @@ Base path: `/profiles`
 - Status: `200`
 
 ### `GET /profiles/me`
+
 - Descrição: Retorna o perfil do usuário autenticado.
 - Login: Sim
 - Permissão: Não
@@ -50,6 +54,7 @@ Base path: `/profiles`
 - Status: `200`
 
 ### `GET /profiles/:id`
+
 - Descrição: Busca um perfil específico pelo identificador.
 - Login: Sim
 - Permissão: Não
@@ -60,6 +65,7 @@ Base path: `/profiles`
 - Status: `200`
 
 ### `PATCH /profiles/me`
+
 - Descrição: Atualiza os dados do perfil do usuário autenticado.
 - Login: Sim
 - Permissão: Não
@@ -74,6 +80,7 @@ Base path: `/profiles`
 - Status: `200`
 
 ### `PATCH /profiles/:id/verify`
+
 - Descrição: Marca um perfil como verificado.
 - Login: Sim
 - Permissão: Não
@@ -84,6 +91,7 @@ Base path: `/profiles`
 - Status: `200`
 
 ### `PATCH /profiles/:id/unverify`
+
 - Descrição: Remove a marcação de verificado de um perfil.
 - Login: Sim
 - Permissão: Não
@@ -94,6 +102,7 @@ Base path: `/profiles`
 - Status: `200`
 
 ### `DELETE /profiles/me`
+
 - Descrição: Remove o perfil do usuário autenticado.
 - Login: Sim
 - Permissão: Não
@@ -101,3 +110,4 @@ Base path: `/profiles`
 - Params: nenhum
 - Query: nenhuma
 - Status: `204`
+

@@ -17,23 +17,22 @@ export class RoleEntity {
   id: string;
 
   @Column({ type: "varchar", length: 100, unique: true })
-  name: string; // ex: "admin", "moderator"
+  name: string;
 
   @Column({ type: "varchar", length: 255, nullable: true })
   description: string | null;
 
-  @Index("idx_roles_is_default") // Otimizar busca pois pode ser uma query importante
+  @Index("idx_roles_is_default")
   @Column({ type: "boolean", default: false })
-  isDefault: boolean; // role atribuída automaticamente em novos usuários
+  isDefault: boolean;
 
-  @Index("idx_roles_is_system") // Otimizar busca pois pode ser uma query importante
+  @Index("idx_roles_is_system")
   @Column({ type: "boolean", default: false })
-  isSystem: boolean; // roles protegidas que não podem ser deletadas (ex: super_admin)
+  isSystem: boolean;
 
   @ManyToMany(() => PermissionEntity, (permission) => permission.roles, {
-    eager: false, // sempre carrega as permissões junto com a role quando for: true
+    eager: false,
   })
-  // Criação da tabela intermediária role_permissions de forma automática
   @JoinTable({
     name: "role_permissions",
     joinColumn: { name: "role_id", referencedColumnName: "id" },

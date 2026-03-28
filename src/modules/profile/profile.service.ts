@@ -53,7 +53,10 @@ export class ProfileService {
       if (error instanceof ConflictException) throw error;
       if (error.code === "23505")
         throw new ConflictException("Este username já está em uso.");
-      this.logger.error(`Erro ao criar perfil: ${error.message}`, error.stack);
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao criar perfil: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException("Erro ao criar perfil.");
     }
   }
@@ -69,7 +72,9 @@ export class ProfileService {
       return profile;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error(`Erro ao buscar perfil: ${error.message}`);
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao buscar perfil: ${error.message}`,
+      );
       throw new InternalServerErrorException("Erro ao buscar perfil.");
     }
   }
@@ -81,7 +86,9 @@ export class ProfileService {
       return profile;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error(`Erro ao buscar perfil: ${error.message}`);
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao buscar perfil: ${error.message}`,
+      );
       throw new InternalServerErrorException("Erro ao buscar perfil.");
     }
   }
@@ -122,7 +129,9 @@ export class ProfileService {
       return this.profileRepository.findById(profile.id);
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error(`Erro ao atualizar perfil: ${error.message}`);
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao atualizar perfil: ${error.message}`,
+      );
       throw new InternalServerErrorException("Erro ao atualizar perfil.");
     }
   }
@@ -150,7 +159,9 @@ export class ProfileService {
       await this.profileRepository.delete(profile.id);
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error(`Erro ao deletar perfil: ${error.message}`);
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao deletar perfil: ${error.message}`,
+      );
       throw new InternalServerErrorException("Erro ao deletar perfil.");
     }
   }

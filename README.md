@@ -60,7 +60,7 @@ Base URL local: `http://localhost:3000`
 | GET | `/roles` | Bearer token | `READ ROLE` | Lista roles com filtros. |
 | GET | `/roles/default` | Bearer token | `READ ROLE` | Busca role marcada como default. |
 | GET | `/roles/:id` | Bearer token | `READ ROLE` | Busca detalhes da role por ID. |
-| PATCH | `/roles/:id/unset-default` | Bearer token | `UPDATE ROLE` | Remove flag de role default. |
+| PATCH | `/roles/:id/default` | Bearer token | `UPDATE ROLE` | Alterna role default (no maximo uma por vez). |
 | POST | `/roles/:id/permissions/:permissionId` | Bearer token | `UPDATE ROLE` | Adiciona permissao a role. |
 | DELETE | `/roles/:id` | Bearer token | `DELETE ROLE` | Remove role. |
 | DELETE | `/roles/:id/permissions/:permissionId` | Bearer token | `DELETE ROLE` | Remove permissao da role. |
@@ -73,7 +73,6 @@ Base URL local: `http://localhost:3000`
 | GET | `/permissions` | Bearer token | `READ PERMISSION` | Lista permissoes com filtros. |
 | GET | `/permissions/:id` | Bearer token | `READ PERMISSION` | Busca detalhes da permissao por ID. |
 | DELETE | `/permissions/:id` | Bearer token | `DELETE PERMISSION` | Remove permissao. |
-| DELETE | `/permissions/:permissionId/roles/:roleId` | Bearer token | `DELETE PERMISSION` | Desvincula permissao de role. |
 
 ## Documentacao por modulo (arquivos locais)
 

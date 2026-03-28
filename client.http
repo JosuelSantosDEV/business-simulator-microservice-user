@@ -202,8 +202,8 @@ Authorization: Bearer {{accessToken}}
 GET {{baseUrl}}/roles/{{roleId}}
 Authorization: Bearer {{accessToken}}
 
-### Unset default role
-PATCH {{baseUrl}}/roles/{{roleId}}/unset-default
+### Toggle default role (on/off; only one default at a time)
+PATCH {{baseUrl}}/roles/{{roleId}}/default
 Authorization: Bearer {{accessToken}}
 
 ### Add permission to role
@@ -243,8 +243,4 @@ Authorization: Bearer {{accessToken}}
 
 ### Remove permission
 DELETE {{baseUrl}}/permissions/{{permissionId}}
-Authorization: Bearer {{accessToken}}
-
-### Remove permission from role
-DELETE {{baseUrl}}/permissions/{{permissionId}}/roles/{{roleId}}
 Authorization: Bearer {{accessToken}}

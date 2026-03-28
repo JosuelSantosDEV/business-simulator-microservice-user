@@ -82,16 +82,15 @@ export class PermissionController {
     await this.permissionService.removePermission(id, currentUser);
   }
 
-  @Delete(":permissionId/roles/:roleId")
+  @Delete(":id/roles")
   @RequirePermissions({
-    action: PermissionAction.DELETE,
+    action: PermissionAction.UPDATE,
     resource: PermissionResource.PERMISSION,
   })
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deletePermissionRole(
-    @Param("permissionId", ParseUUIDPipe) permissionId: string,
-    @Param("roleId", ParseUUIDPipe) roleId: string,
+  async removePermissionFromAllRoles(
+    @Param("id", ParseUUIDPipe) permissionId: string,
   ) {
-    await this.permissionService.removePermissionRole(permissionId, roleId);
+    await this.permissionService.removePermissionFromAllRoles(permissionId);
   }
 }

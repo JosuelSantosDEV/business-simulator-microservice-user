@@ -17,6 +17,7 @@ import { UserService } from "../user/user.service";
 import { jwtConfig } from "src/config/jwt.config";
 import { HashingService } from "src/common/services/hashing.service";
 import { TokensInterface } from "src/common/interfaces/tokens.interface";
+import { isRestrictedUser } from "src/common/helpers/auth.helper";
 
 @Injectable()
 export class AuthService {
@@ -33,24 +34,34 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const user = await this.userService.findByEmailWithPassword(loginDto.email);
 
-    // Cobre: email não existe + softdelete (TypeORM filtra deletedAt automaticamente)
-    // Mesma mensagem para ambos — não revelamos se o email existe
     if (!user) {
       throw new UnauthorizedException("Credenciais inválidas");
     }
+
+    if (user.isLocked) {
+      throw new ForbiddenException("Usuário bloqueado");
+    }
+
+    this.validateUserStatus(user);
+
+    const isRestricted = isRestrictedUser(user);
+
+    if (isRestricted) this.checkPasswordExpiration(user);
 
     const passwordMatch = await this.hashingService.compare(
       loginDto.password,
       user.password,
     );
+
     if (!passwordMatch) {
+      if (isRestricted) await this.handleFailedLogin(user);
       throw new UnauthorizedException("Credenciais inválidas");
     }
 
-    // Cobre: PENDING, INACTIVE, BANNED, emailVerifiedAt nulo
-    this.validateUserStatus(user);
+    if (isRestricted) await this.handleSuccessfulLogin(user);
 
     const tokens = await this.generateTokens(user);
+
     await this.userService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.userService.updateLastLogin(user.id);
 
@@ -72,6 +83,15 @@ export class AuthService {
       throw new ForbiddenException("Acesso negado");
     }
 
+    if (user.isLocked) {
+      throw new ForbiddenException({
+        message: "Usuário bloqueado.",
+        code: "USER_LOCKED",
+      });
+    }
+
+    this.validateUserStatus(user);
+
     const tokens = await this.generateTokens(user);
     await this.userService.updateRefreshToken(user.id, tokens.refreshToken);
 
@@ -85,7 +105,6 @@ export class AuthService {
   async verifyEmail(token: string) {
     const user = await this.userService.findByEmailVerificationToken(token);
 
-    // Token não existe ou já foi consumido
     if (!user) {
       throw new BadRequestException({
         message: "Token inválido ou já utilizado.",
@@ -93,7 +112,6 @@ export class AuthService {
       });
     }
 
-    // Token expirado — usuário precisa solicitar reenvio
     if (user.emailVerificationTokenExpiresAt < new Date()) {
       throw new BadRequestException({
         message: "Token expirado. Solicite um novo link de verificação.",
@@ -101,7 +119,6 @@ export class AuthService {
       });
     }
 
-    // Já verificado — idempotente, não lança erro
     if (user.emailVerifiedAt) {
       return { message: "Email já verificado. Você pode fazer login." };
     }
@@ -121,12 +138,13 @@ export class AuthService {
     }
 
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 30); // 30 minutos
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 30);
 
     await this.userService.setPasswordResetToken(user.id, token, expiresAt);
 
-    // await this.mailService.sendPasswordReset(user.email, token);
-    this.logger.debug(`[RESET TOKEN] ${user.email} → ${token}`);
+    this.logger.debug(
+      `${new Date(Date.now())}[RESET TOKEN] ${user.email} → ${token}`,
+    );
 
     return { message: "Se o email existir, você receberá as instruções" };
   }
@@ -189,7 +207,6 @@ export class AuthService {
     const payload = { sub: user.id };
 
     const [accessToken, refreshToken] = await Promise.all([
-      // access token — usa o secret do JwtModule (já configurado)
       this.jwtService.signAsync(payload, {
         secret: this.jwtConfiguration.secret,
         expiresIn: this.jwtConfiguration.accessExpiresIn,
@@ -197,9 +214,8 @@ export class AuthService {
         issuer: this.jwtConfiguration.issuer,
       }),
 
-      // refresh token — usa o refreshSecret explicitamente
       this.jwtService.signAsync(payload, {
-        secret: this.jwtConfiguration.refreshSecret, // secret diferente aqui
+        secret: this.jwtConfiguration.refreshSecret,
         expiresIn: this.jwtConfiguration.refreshExpiresIn,
         audience: this.jwtConfiguration.audience,
         issuer: this.jwtConfiguration.issuer,
@@ -207,5 +223,42 @@ export class AuthService {
     ]);
 
     return { accessToken, refreshToken };
+  }
+
+  private async handleFailedLogin(user: UserEntity): Promise<void> {
+    const MAX_ATTEMPTS = 3;
+    user.failedLoginAttempts += 1;
+    user.lastFailedLoginAt = new Date();
+
+    if (user.failedLoginAttempts >= MAX_ATTEMPTS) {
+      user.isLocked = true;
+    }
+
+    await this.userService.updateAuthFields(user.id, {
+      failedLoginAttempts: user.failedLoginAttempts,
+      lastFailedLoginAt: user.lastFailedLoginAt,
+      isLocked: user.isLocked,
+    });
+  }
+
+  private async handleSuccessfulLogin(user: UserEntity): Promise<void> {
+    await this.userService.updateAuthFields(user.id, {
+      failedLoginAttempts: 0,
+      lastFailedLoginAt: null,
+      isLocked: false,
+    });
+  }
+
+  private checkPasswordExpiration(user: UserEntity): void {
+    const referenceDate = user.passwordChangedAt ?? user.createdAt;
+    const diffInDays =
+      (Date.now() - referenceDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    if (diffInDays > 30) {
+      throw new ForbiddenException({
+        message: "Senha expirada. Troque sua senha para continuar.",
+        code: "PASSWORD_EXPIRED",
+      });
+    }
   }
 }

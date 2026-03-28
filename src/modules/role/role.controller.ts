@@ -57,7 +57,6 @@ export class RoleController {
     return this.roleService.findRolesByQuery(queryRoleDto);
   }
 
-  // Obtem a role default
   @Get("default")
   @RequirePermissions({
     action: PermissionAction.READ,
@@ -80,14 +79,14 @@ export class RoleController {
   // ============ UPDATE =========
   // =============================
 
-  @Patch(":id/unset-default")
+  @Patch(":id/default")
   @RequirePermissions({
     action: PermissionAction.UPDATE,
     resource: PermissionResource.ROLE,
   })
   @HttpCode(HttpStatus.OK)
-  unsetDefaultRole(@Param("id", ParseUUIDPipe) id: string) {
-    return this.roleService.unsetDefaultRole(id);
+  toggleDefaultRole(@Param("id", ParseUUIDPipe) id: string) {
+    return this.roleService.toggleDefaultRole(id);
   }
 
   @Post(":id/permissions/:permissionId")
@@ -141,5 +140,18 @@ export class RoleController {
       permissionId,
       currentUser,
     );
+  }
+
+  @Delete(":id/permissions")
+  @RequirePermissions({
+    action: PermissionAction.UPDATE,
+    resource: PermissionResource.ROLE,
+  })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeAllPermissionsFromRole(
+    @Param("id", ParseUUIDPipe) roleId: string,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    await this.roleService.removeAllPermissionsFromRole(roleId, currentUser);
   }
 }

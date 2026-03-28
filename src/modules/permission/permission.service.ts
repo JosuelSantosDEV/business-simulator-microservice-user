@@ -60,21 +60,14 @@ export class PermissionService {
   // ============ DELETE =========
   // =============================
 
-  async removePermissionRole(
-    permissionId: string,
-    roleId: string,
-  ): Promise<void> {
-    await this.permissionRepository.removeRoleFromPermission(
-      permissionId,
-      roleId,
-    );
-  }
-
   async removePermission(id: string, currentUser: UserEntity): Promise<void> {
     const currentUserIsSystem = currentUser?.roles?.some(
       (role) => role?.isSystem,
     );
 
     await this.permissionRepository.delete(id, currentUserIsSystem);
+  }
+  async removePermissionFromAllRoles(permissionId: string): Promise<void> {
+    await this.permissionRepository.removeFromAllRoles(permissionId);
   }
 }

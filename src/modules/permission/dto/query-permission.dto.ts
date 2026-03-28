@@ -24,7 +24,6 @@ export enum SortOrder {
 }
 
 export class QueryPermissionDto {
-  // Filtros
   @IsOptional()
   @IsEnum(PermissionAction)
   action?: PermissionAction;
@@ -35,13 +34,12 @@ export class QueryPermissionDto {
 
   @IsOptional()
   @IsString()
-  name?: string; // busca parcial no name
+  name?: string;
 
   @IsOptional()
   @IsUUID()
-  roleId?: string; // filtrar permissões de uma role específica
+  roleId?: string;
 
-  // Paginação
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -54,7 +52,6 @@ export class QueryPermissionDto {
   @Min(1)
   limit?: number = 10;
 
-  // Ordenação
   @IsOptional()
   @IsEnum(PermissionSortField)
   sortBy?: PermissionSortField = PermissionSortField.CREATED_AT;

@@ -11,7 +11,7 @@ Base path: `/roles`
 
 ### `POST /roles`
 
-- Descrição: Cria uma nova role no sistema.
+- Descrição: Cria uma nova role no sistema. Se `isDefault` for `true`, todas as outras roles deixam de ser padrão (só pode existir uma).
 - Login: Sim
 - Permissão: `create:role`
 - Body:
@@ -62,9 +62,9 @@ Base path: `/roles`
 - Query: nenhuma
 - Status: `200`
 
-### `PATCH /roles/:id/unset-default`
+### `PATCH /roles/:id/default`
 
-- Descrição: Remove o atributo de role padrão da role informada.
+- Descrição: Alterna se a role é a padrão (`isDefault`): se passar a `true`, desmarca automaticamente qualquer outra role padrão (só pode existir uma); se já for padrão, passa a `false`.
 - Login: Sim
 - Permissão: `update:role`
 - Body: nenhum
@@ -105,6 +105,17 @@ Base path: `/roles`
 - Params:
   - `id` (uuid)
   - `permissionId` (uuid)
+- Query: nenhuma
+- Status: `204`
+
+### `DELETE /roles/:id/permissions`
+
+- Descrição: Remove **todas as permissões associadas** à role informada.
+- Login: Sim
+- Permissão: `update:role`
+- Body: nenhum
+- Params:
+  - `id` (uuid)
 - Query: nenhuma
 - Status: `204`
 

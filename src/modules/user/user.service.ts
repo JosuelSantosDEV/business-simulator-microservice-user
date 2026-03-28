@@ -11,11 +11,10 @@ import * as crypto from "crypto";
 import { UsersRepository } from "./user.repository";
 import { RoleService } from "../role/role.service";
 import { CreateUserDto } from "./dto/create-user.dto";
-import { UpdateUserDto } from "./dto/update-user.dto";
-import { UserResponseDto } from "./dto/user-response.dto";
 import { UserEntity } from "./entity/user.entity";
 import { UserStatus } from "src/common/enums/user-status.enum";
 import { HashingService } from "src/common/services/hashing.service";
+import { ListUsersQueryDto } from "./dto/list-users-query.dto";
 
 @Injectable()
 export class UserService {
@@ -35,7 +34,7 @@ export class UserService {
     const verificationToken = crypto.randomBytes(32).toString("hex");
     const verificationTokenExpiresAt = new Date(
       Date.now() + 1000 * 60 * 60 * 24,
-    ); // 24 horas
+    );
 
     const user = await this.create(
       { email: createUserDto.email, password: createUserDto.password },
@@ -48,15 +47,14 @@ export class UserService {
 
   async createAdminUser(createUserDto: CreateUserDto): Promise<UserEntity> {
     try {
-      // Verificando se usuário já existe
       const exists = await this.userRepository.findUserByEmail(
         createUserDto.email,
       );
-      // Lançar erro caso exista
+
       if (exists) throw new ConflictException("Email já cadastrado");
-      // Criando hashing de senha
+
       const hashed = await this.hashingService.hash(createUserDto.password);
-      // Montando novo usuário
+
       return await this.userRepository.create({
         email: createUserDto.email,
         password: hashed,
@@ -64,15 +62,17 @@ export class UserService {
         status: UserStatus.INACTIVE,
       });
     } catch (error) {
-      // Se o erro já for uma exceção HTTP conhecida repaça
       if (error instanceof ConflictException) throw error;
-      // Código 23505 é o padrão PostgreSQL para unique_violation
+
       if (error.code === "23505") {
         throw new ConflictException("Email já cadastrado");
       }
-      // Loga erro para desenvolvedor
-      this.logger.error(`Erro ao criar usuário: ${error.message}`, error.stack);
-      // Lança erro genérico para usuário
+
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao criar usuário: ${error.message}`,
+        error.stack,
+      );
+
       throw new InternalServerErrorException(
         "Erro ao processar criação de usuário",
       );
@@ -104,7 +104,10 @@ export class UserService {
       if (error instanceof ConflictException) throw error;
       if (error.code === "23505")
         throw new ConflictException("Email já cadastrado");
-      this.logger.error(`Erro ao criar usuário: ${error.message}`, error.stack);
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao criar usuário: ${error.message}`,
+        error.stack,
+      );
       throw new InternalServerErrorException(
         "Erro ao processar criação de usuário",
       );
@@ -115,7 +118,6 @@ export class UserService {
   // ================ READ ==================
   // ========================================
 
-  // Buscar usuário por id
   async findById(id: string): Promise<UserEntity> {
     try {
       const user = await this.userRepository.findUserById(id);
@@ -123,52 +125,42 @@ export class UserService {
       return user;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      // Captura erros de conexão com banco, por exemplo
-      this.logger.error(`Erro ao buscar usuário ID ${id}: ${error.message}`);
+
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao buscar usuário ID ${id}: ${error.message}`,
+      );
       throw new InternalServerErrorException("Erro ao buscar usuário");
     }
   }
 
-  // Busca usuário com refreshToken
   async findByIdWithRefreshToken(id: string): Promise<UserEntity> {
     const user = await this.userRepository.findUserByIdWithRefreshToken(id);
     if (!user) throw new NotFoundException("Usuário não encontrado");
     return user;
   }
 
-  // Buscar por email
   async findByEmail(email: string): Promise<UserEntity | null> {
     return this.userRepository.findUserByEmail(email);
   }
 
-  // Buscar usuário com password
   async findByEmailWithPassword(email: string): Promise<UserEntity | null> {
     return this.userRepository.findUserByEmailWithPassword(email);
   }
 
-  // Buscar usuário pelo token de verificação
   async findByEmailVerificationToken(
     token: string,
   ): Promise<UserEntity | null> {
     return this.userRepository.findUserByEmailVerificationToken(token);
   }
 
-  // Buscar usuário pelo token de resetar senha
   async findByPasswordResetToken(token: string): Promise<UserEntity | null> {
     return this.userRepository.findUserByPasswordResetToken(token);
   }
 
-  // Busca usuários com paginação, ordenação e filtros
-  async findAllByQuery(params: {
-    status?: string;
-    email?: string; // ← novo
-    sortBy?: string;
-    sortOrder?: "ASC" | "DESC";
-    page: number;
-    limit: number;
-    includeDeleted?: boolean;
-  }): Promise<{ data: UserEntity[]; total: number }> {
-    const [users, total] = await this.userRepository.findAllByQuery(params);
+  async findAllByQuery(
+    query: ListUsersQueryDto,
+  ): Promise<{ data: UserEntity[]; total: number }> {
+    const [users, total] = await this.userRepository.findAllByQuery(query);
     return { data: users, total };
   }
 
@@ -176,7 +168,6 @@ export class UserService {
   // ============== UPDATE ==================
   // ========================================
 
-  // Adicionar role a um usuário
   async addRoleToUser(
     userId: string,
     roleId: string,
@@ -191,7 +182,6 @@ export class UserService {
     return { message: "Role adicionada ao usuário com sucesso" };
   }
 
-  // Remover role de um usuário
   async removeRoleFromUser(
     userId: string,
     roleId: string,
@@ -205,49 +195,27 @@ export class UserService {
     );
   }
 
-  // Atualizar usuário
-  async update(
-    id: string,
-    updateUserDto: UpdateUserDto,
-  ): Promise<UserResponseDto> {
+  async updateRefreshToken(id: string, token: string | null): Promise<void> {
     try {
-      await this.userRepository.update(id, updateUserDto);
-
-      // Busca novamente para retornar os dados atualizados
-      const updated = await this.userRepository.findUserById(id);
-      return UserResponseDto.fromEntity(updated);
+      const hashed = token ? await this.hashingService.hash(token) : null;
+      await this.userRepository.update(id, { refreshToken: hashed });
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
-
-      this.logger.error(`Erro ao atualizar usuário ${id}: ${error.message}`);
-      throw new InternalServerErrorException(
-        "Não foi possível atualizar o usuário",
+      this.logger.error(
+        `${new Date(Date.now())} - Erro ao atualizar refresh token: ${error.message}`,
       );
     }
   }
 
-  // Atualizar refreshToken
-  async updateRefreshToken(id: string, token: string | null): Promise<void> {
-    try {
-      // Se houver token, faz o hash usando o serviço injetado
-      const hashed = token ? await this.hashingService.hash(token) : null;
-      await this.userRepository.update(id, { refreshToken: hashed });
-    } catch (error) {
-      this.logger.error(`Erro ao atualizar refresh token: ${error.message}`);
-      // Não lançamos erro aqui para não quebrar o fluxo de login, mas logamos
-    }
-  }
-
-  // Atualizar ultimo login
   async updateLastLogin(id: string): Promise<void> {
     this.userRepository
       .update(id, { lastLoginAt: new Date() })
       .catch((err) =>
-        this.logger.error(`Falha ao atualizar lastLogin: ${err.message}`),
+        this.logger.error(
+          `${new Date(Date.now())} - Falha ao atualizar lastLogin: ${err.message}`,
+        ),
       );
   }
 
-  // Setar verificação do usuário
   async markEmailAsVerified(id: string): Promise<void> {
     await this.userRepository.update(id, {
       emailVerifiedAt: new Date(),
@@ -257,29 +225,26 @@ export class UserService {
     });
   }
 
-  // Valida se o email esta verificado e atualiza o token de verificação de email
   async resendVerificationEmail(email: string): Promise<void> {
     const user = await this.userRepository.findUserByEmail(email);
 
-    // Silencioso — não revelamos se o email existe
     if (!user) return;
 
-    // Já verificado — não faz nada
     if (user.status !== UserStatus.PENDING) return;
 
     const newToken = crypto.randomBytes(32).toString("hex");
-    const newExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24h
+    const newExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
 
     await this.userRepository.update(user.id, {
       emailVerificationToken: newToken,
       emailVerificationTokenExpiresAt: newExpiresAt,
     });
 
-    // Por enquanto apenas loga — email será implementado depois
-    this.logger.debug(`[VERIFICATION TOKEN] ${user.email} → ${newToken}`);
+    this.logger.debug(
+      `${new Date(Date.now())} - [VERIFICATION TOKEN] ${user.email} → ${newToken}`,
+    );
   }
 
-  // Setar token para resetar a senha
   async setPasswordResetToken(
     id: string,
     token: string,
@@ -291,17 +256,18 @@ export class UserService {
     });
   }
 
-  // Setar nova senha e resetar verificadores
   async resetPassword(id: string, hashedPassword: string): Promise<void> {
     await this.userRepository.update(id, {
       password: hashedPassword,
       passwordResetToken: null,
       passwordResetExpiresAt: null,
       refreshToken: null,
+      failedLoginAttempts: 0,
+      isLocked: false,
+      passwordChangedAt: new Date(),
     });
   }
 
-  // Atualizar password
   async updatePassword(
     id: string,
     currentPassword: string,
@@ -327,7 +293,7 @@ export class UserService {
         throw error;
       }
       this.logger.error(
-        `Erro ao alterar senha do usuário ${id}: ${error.message}`,
+        `${new Date(Date.now())} - Erro ao alterar senha do usuário ${id}: ${error.message}`,
       );
       throw new InternalServerErrorException(
         "Erro ao processar alteração de senha",
@@ -345,7 +311,6 @@ export class UserService {
     const currentUserIsSystem = currentUser.roles?.some((r) => r.isSystem);
     const targetIsSystem = target.roles?.some((r) => r.isSystem);
 
-    // Não-system não pode alterar status de um usuário system
     if (targetIsSystem && !currentUserIsSystem) {
       throw new ForbiddenException(
         "Você não tem permissão para alterar o status deste usuário.",
@@ -356,24 +321,47 @@ export class UserService {
     return { message: `Status atualizado para "${newStatus}" com sucesso.` };
   }
 
+  async updateAuthFields(
+    id: string,
+    data: Partial<
+      Pick<UserEntity, "failedLoginAttempts" | "lastFailedLoginAt" | "isLocked">
+    >,
+  ): Promise<void> {
+    await this.userRepository.update(id, data);
+  }
+
   // ========================================
   // ================ DELETE ================
   // ========================================
 
-  async remove(id: string): Promise<void> {
+  async remove(currentUser: UserEntity): Promise<void> {
+    const id = currentUser.id;
     try {
       const user = await this.findById(id);
 
-      // Usuário não verificado — remove permanentemente
+      const currentIsSystem = currentUser.roles?.some((r) => r.isSystem);
+      const targetIsSystem = user.roles?.some((r) => r.isSystem);
+
+      if (targetIsSystem && !currentIsSystem) {
+        throw new ForbiddenException(
+          "Você não tem permissão para remover este usuário.",
+        );
+      }
+
       if (!user.emailVerifiedAt) {
         await this.userRepository.hardDelete(id);
         return;
       }
 
-      // Usuário verificado — soft delete
       await this.userRepository.softDelete(id);
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+
       throw new InternalServerErrorException("Erro ao remover usuário");
     }
   }

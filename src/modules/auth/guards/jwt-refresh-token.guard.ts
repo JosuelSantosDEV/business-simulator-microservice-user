@@ -1,4 +1,3 @@
-// src/modules/auth/guards/jwt-refresh-token.guard.ts
 import {
   Injectable,
   ExecutionContext,

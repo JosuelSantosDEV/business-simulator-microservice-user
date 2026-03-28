@@ -18,15 +18,14 @@ export class JwtRefreshTokenStrategy extends PassportStrategy(
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.refreshSecret, // usa o refreshSecret aqui
+      secretOrKey: config.refreshSecret,
       audience: config.audience,
       issuer: config.issuer,
-      passReqToCallback: true, // precisa para pegar o token bruto no validate
+      passReqToCallback: true,
     });
   }
 
   async validate(req: Request, payload: { sub: string }) {
-    // pega o token bruto para comparar com o hash no banco
     const refreshToken = req.headers.authorization
       ?.replace("Bearer ", "")
       .trim();
