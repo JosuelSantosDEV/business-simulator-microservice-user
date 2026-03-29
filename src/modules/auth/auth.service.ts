@@ -18,6 +18,7 @@ import { jwtConfig } from "src/config/jwt.config";
 import { HashingService } from "src/common/services/hashing.service";
 import { TokensInterface } from "src/common/interfaces/tokens.interface";
 import { isRestrictedUser } from "src/common/helpers/auth.helper";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class AuthService {
@@ -35,11 +36,17 @@ export class AuthService {
     const user = await this.userService.findByEmailWithPassword(loginDto.email);
 
     if (!user) {
-      throw new UnauthorizedException("Credenciais inválidas");
+      throw new UnauthorizedException({
+        message: "Credenciais inválidas",
+        code: ErrorCodes.AUTH_INVALID_CREDENTIALS,
+      });
     }
 
     if (user.isLocked) {
-      throw new ForbiddenException("Usuário bloqueado");
+      throw new ForbiddenException({
+        message: "Usuário bloqueado",
+        code: ErrorCodes.AUTH_USER_LOCKED,
+      });
     }
 
     this.validateUserStatus(user);
@@ -55,7 +62,10 @@ export class AuthService {
 
     if (!passwordMatch) {
       if (isRestricted) await this.handleFailedLogin(user);
-      throw new UnauthorizedException("Credenciais inválidas");
+      throw new UnauthorizedException({
+        message: "Credenciais inválidas",
+        code: ErrorCodes.AUTH_INVALID_CREDENTIALS,
+      });
     }
 
     if (isRestricted) await this.handleSuccessfulLogin(user);
@@ -72,7 +82,10 @@ export class AuthService {
     const user = await this.userService.findByIdWithRefreshToken(userId);
 
     if (!user?.refreshToken) {
-      throw new ForbiddenException("Acesso negado");
+      throw new ForbiddenException({
+        message: "Acesso negado",
+        code: ErrorCodes.AUTH_INVALID_REFRESH_TOKEN,
+      });
     }
 
     const tokenMatch = await this.hashingService.compare(
@@ -80,13 +93,16 @@ export class AuthService {
       user.refreshToken,
     );
     if (!tokenMatch) {
-      throw new ForbiddenException("Acesso negado");
+      throw new ForbiddenException({
+        message: "Acesso negado",
+        code: ErrorCodes.AUTH_INVALID_REFRESH_TOKEN,
+      });
     }
 
     if (user.isLocked) {
       throw new ForbiddenException({
         message: "Usuário bloqueado.",
-        code: "USER_LOCKED",
+        code: ErrorCodes.AUTH_USER_LOCKED,
       });
     }
 
@@ -108,14 +124,14 @@ export class AuthService {
     if (!user) {
       throw new BadRequestException({
         message: "Token inválido ou já utilizado.",
-        code: "INVALID_VERIFICATION_TOKEN",
+        code: ErrorCodes.AUTH_INVALID_VERIFICATION_TOKEN,
       });
     }
 
     if (user.emailVerificationTokenExpiresAt < new Date()) {
       throw new BadRequestException({
         message: "Token expirado. Solicite um novo link de verificação.",
-        code: "EXPIRED_VERIFICATION_TOKEN",
+        code: ErrorCodes.AUTH_EXPIRED_VERIFICATION_TOKEN,
       });
     }
 
@@ -155,14 +171,14 @@ export class AuthService {
     if (!user) {
       throw new BadRequestException({
         message: "Token inválido ou já utilizado.",
-        code: "INVALID_RESET_TOKEN",
+        code: ErrorCodes.AUTH_INVALID_RESET_TOKEN,
       });
     }
 
     if (user.passwordResetExpiresAt < new Date()) {
       throw new BadRequestException({
         message: "Token expirado. Solicite um novo link de recuperação.",
-        code: "EXPIRED_RESET_TOKEN",
+        code: ErrorCodes.AUTH_EXPIRED_RESET_TOKEN,
       });
     }
 
@@ -172,33 +188,28 @@ export class AuthService {
     return { message: "Senha alterada com sucesso" };
   }
 
-  // ─── Private ────────────────────────────────────────────────────────────────
+  // ------------------------------- Private ------------------------------------
 
   private validateUserStatus(user: UserEntity): void {
-    if (!user.emailVerifiedAt) {
+    if (!user.emailVerifiedAt || user.status === UserStatus.PENDING) {
       throw new ForbiddenException({
         message:
           "Você precisa verificar seu email antes de fazer login. Verifique sua caixa de entrada.",
-        code: "EMAIL_NOT_VERIFIED",
+        code: ErrorCodes.AUTH_EMAIL_NOT_VERIFIED,
       });
     }
-    if (user.status === UserStatus.PENDING) {
-      throw new ForbiddenException({
-        message:
-          "Você precisa verificar seu email antes de fazer login. Verifique sua caixa de entrada.",
-        code: "EMAIL_NOT_VERIFIED",
-      });
-    }
+
     if (user.status === UserStatus.INACTIVE) {
       throw new ForbiddenException({
         message: "Conta desativada. Entre em contato com o suporte.",
-        code: "ACCOUNT_INACTIVE",
+        code: ErrorCodes.AUTH_ACCOUNT_INACTIVE,
       });
     }
+
     if (user.status === UserStatus.BANNED) {
       throw new ForbiddenException({
         message: "Conta banida. Entre em contato com o suporte.",
-        code: "ACCOUNT_BANNED",
+        code: ErrorCodes.AUTH_ACCOUNT_BANNED,
       });
     }
   }
@@ -257,7 +268,7 @@ export class AuthService {
     if (diffInDays > 30) {
       throw new ForbiddenException({
         message: "Senha expirada. Troque sua senha para continuar.",
-        code: "PASSWORD_EXPIRED",
+        code: ErrorCodes.AUTH_PASSWORD_EXPIRED,
       });
     }
   }

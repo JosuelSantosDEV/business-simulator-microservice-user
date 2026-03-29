@@ -6,6 +6,7 @@ import { JWT_STRATEGY } from "src/common/constants/strategies-key.constant";
 import { jwtConfig } from "src/config/jwt.config";
 import { UserEntity } from "src/modules/user/entity/user.entity";
 import { UserService } from "src/modules/user/user.service";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class JwtAccessTokenStrategy extends PassportStrategy(
@@ -28,7 +29,12 @@ export class JwtAccessTokenStrategy extends PassportStrategy(
 
   async validate(payload: { sub: string }): Promise<UserEntity> {
     const user = await this.userService.findById(payload.sub);
-    if (!user) throw new UnauthorizedException();
+    if (!user) {
+      throw new UnauthorizedException({
+        message: "Usuário não encontrado ou token inválido",
+        code: ErrorCodes.AUTH_INVALID_CREDENTIALS,
+      });
+    }
     return user;
   }
 }

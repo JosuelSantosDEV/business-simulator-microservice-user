@@ -1,10 +1,16 @@
-import { Injectable } from "@nestjs/common";
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PermissionRepository } from "./permission.repository";
 import { PermissionEntity } from "./entity/permission.entity";
 import { QueryPermissionDto } from "./dto/query-permission.dto";
-import { PaginatedResponse } from "src/common/interfaces/pagination-response.interface";
 import { CreatePermissionDto } from "./dto/create-permission.dto";
 import { UserEntity } from "../user/entity/user.entity";
+import { userIsSystem } from "src/common/helpers/user-is-system.helper";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class PermissionService {
@@ -18,11 +24,19 @@ export class PermissionService {
     createPermissionDto: CreatePermissionDto,
   ): Promise<PermissionEntity> {
     const { action, resource, description } = createPermissionDto;
-    return await this.permissionRepository.create(
+
+    const existing = await this.permissionRepository.findByActionAndResource(
       action,
       resource,
-      description,
     );
+    if (existing) {
+      throw new ConflictException({
+        message: `Permissão "${action}:${resource}" já existe no sistema`,
+        code: ErrorCodes.PERMISSION_CONFLICT,
+      });
+    }
+
+    return this.permissionRepository.create(action, resource, description);
   }
 
   // =============================
@@ -31,29 +45,22 @@ export class PermissionService {
 
   async findPermissionsByPermissionQuery(
     queryDto: QueryPermissionDto,
-  ): Promise<PaginatedResponse<PermissionEntity>> {
+  ): Promise<{ data: PermissionEntity[]; total: number }> {
     const [data, total] =
       await this.permissionRepository.findAllWithFilters(queryDto);
 
-    const totalPages = Math.ceil(total / queryDto.limit);
-    const hasNextPage = queryDto.page < totalPages;
-    const hasPreviousPage = queryDto.page > 1;
-
-    return {
-      data,
-      meta: {
-        total,
-        page: queryDto.page,
-        limit: queryDto.limit,
-        totalPages,
-        hasNextPage,
-        hasPreviousPage,
-      },
-    };
+    return { data, total };
   }
 
   async findPermissionDetails(id: string): Promise<PermissionEntity> {
-    return await this.permissionRepository.findById(id);
+    const permission = await this.permissionExist(id);
+    if (!permission) {
+      throw new NotFoundException({
+        message: "Permissão não encontrada!",
+        code: ErrorCodes.PERMISSION_NOT_FOUND,
+      });
+    }
+    return permission;
   }
 
   // =============================
@@ -61,13 +68,83 @@ export class PermissionService {
   // =============================
 
   async removePermission(id: string, currentUser: UserEntity): Promise<void> {
-    const currentUserIsSystem = currentUser?.roles?.some(
-      (role) => role?.isSystem,
-    );
+    const isSystem = userIsSystem(currentUser);
 
-    await this.permissionRepository.delete(id, currentUserIsSystem);
+    const permission = await this.permissionExist(id);
+    if (!permission) {
+      throw new NotFoundException({
+        message: "Permissão não encontrada!",
+        code: ErrorCodes.PERMISSION_NOT_FOUND,
+      });
+    }
+
+    if (!isSystem) {
+      const permissionWithRoles =
+        await this.permissionRepository.findByIdWithRoles(id);
+
+      const linkedToSystemRole = permissionWithRoles.roles.some(
+        (role) => role.isSystem,
+      );
+
+      if (linkedToSystemRole) {
+        const systemRoleNames = permissionWithRoles.roles
+          .filter((role) => role.isSystem)
+          .map((role) => role.name)
+          .join(", ");
+
+        throw new ForbiddenException({
+          message: `Não é possível deletar esta permissão pois ela está associada a role(s) de sistema: ${systemRoleNames}`,
+          code: ErrorCodes.PERMISSION_SYSTEM_FORBIDDEN,
+        });
+      }
+    }
+
+    await this.permissionRepository.delete(id);
   }
-  async removePermissionFromAllRoles(permissionId: string): Promise<void> {
+
+  async removePermissionFromAllRoles(
+    permissionId: string,
+    currentUser: UserEntity,
+  ): Promise<void> {
+    const isSystem = userIsSystem(currentUser);
+
+    const permission = await this.permissionExist(permissionId);
+    if (!permission) {
+      throw new NotFoundException({
+        message: "Permissão não encontrada!",
+        code: ErrorCodes.PERMISSION_NOT_FOUND,
+      });
+    }
+
+    if (!isSystem) {
+      const permissionWithRoles =
+        await this.permissionRepository.findByIdWithRoles(permissionId);
+
+      const linkedToSystemRole = permissionWithRoles.roles.some(
+        (role) => role.isSystem,
+      );
+
+      if (linkedToSystemRole) {
+        const systemRoleNames = permissionWithRoles.roles
+          .filter((role) => role.isSystem)
+          .map((role) => role.name)
+          .join(", ");
+
+        throw new ForbiddenException({
+          message: `Não é possível remover esta permissão de todas as roles pois ela está associada a role(s) de sistema: ${systemRoleNames}`,
+          code: ErrorCodes.PERMISSION_SYSTEM_FORBIDDEN,
+        });
+      }
+    }
+
     await this.permissionRepository.removeFromAllRoles(permissionId);
+  }
+
+  // ------------------------- Private -----------------------------
+
+  private async permissionExist(id: string): Promise<PermissionEntity | false> {
+    const permission = await this.permissionRepository.findById(id);
+    if (!permission) return false;
+    return permission;
   }
 }

@@ -30,6 +30,7 @@ import { CreateUserDto } from "./dto/create-user.dto";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
 import { UserResponseDto } from "./dto/user-response.dto";
 import { UpdatePasswordDto } from "./dto/update-password.dto";
+import { PaginatedResponse } from "src/common/interfaces/pagination-response.interface";
 
 const READ_USER: RequiredPermission = {
   action: PermissionAction.READ,
@@ -83,19 +84,24 @@ export class UserController {
 
   @Get()
   @RequirePermissions(READ_USER)
-  async findAll(@Query() query: ListUsersQueryDto) {
+  async findAll(
+    @Query() query: ListUsersQueryDto,
+  ): Promise<PaginatedResponse<UserResponseDto>> {
     const result = await this.usersService.findAllByQuery(query);
-
+    const totalPages = Math.ceil(result.total / query.limit);
     return {
       data: result.data.map((u) => UserResponseDto.fromEntity(u)),
       meta: {
         total: result.total,
-        page: query.page ?? 1,
-        limit: query.limit ?? 10,
-        totalPages: Math.ceil(result.total / (query.limit ?? 10)),
+        page: query.page,
+        limit: query.limit,
+        totalPages,
+        hasNextPage: query.page < totalPages,
+        hasPreviousPage: query.page > 1,
       },
     };
   }
+
   @Get(":id")
   @RequirePermissions(READ_USER)
   async findOneById(@Param("id", ParseUUIDPipe) id: string) {
@@ -172,14 +178,17 @@ export class UserController {
   @Delete("me")
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteMe(@CurrentUser() currentUser: UserEntity) {
-    await this.usersService.remove(currentUser);
+    await this.usersService.removeMe(currentUser);
   }
 
   @Delete(":id")
   @RequirePermissions(DELETE_USER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@CurrentUser() currentUser: UserEntity) {
-    await this.usersService.remove(currentUser);
+  async remove(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    await this.usersService.removeById(id, currentUser);
   }
 
   @Post(":id/restore")

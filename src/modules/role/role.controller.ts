@@ -19,9 +19,33 @@ import { CurrentUser } from "src/common/decorators/current-user.decorator";
 import { UserEntity } from "../user/entity/user.entity";
 import { JwtAccessTokenGuard } from "../auth/guards/jwt-access-token.guard";
 import { PermissionsGuard } from "../auth/guards/permissions.guard";
-import { RequirePermissions } from "src/common/decorators/require-permissions.decorator";
+import {
+  RequirePermissions,
+  RequiredPermission,
+} from "src/common/decorators/require-permissions.decorator";
 import { PermissionAction } from "src/common/enums/permission-action.enum";
 import { PermissionResource } from "src/common/enums/permission-resource.enum";
+import { RoleResponseDto } from "./dto/role-response.dto";
+import { PaginatedResponse } from "src/common/interfaces/pagination-response.interface";
+
+// ALTERAÇÃO: permissões extraídas para constantes acima da classe,
+// seguindo o mesmo padrão do UserController
+const CREATE_ROLE: RequiredPermission = {
+  action: PermissionAction.CREATE,
+  resource: PermissionResource.ROLE,
+};
+const READ_ROLE: RequiredPermission = {
+  action: PermissionAction.READ,
+  resource: PermissionResource.ROLE,
+};
+const UPDATE_ROLE: RequiredPermission = {
+  action: PermissionAction.UPDATE,
+  resource: PermissionResource.ROLE,
+};
+const DELETE_ROLE: RequiredPermission = {
+  action: PermissionAction.DELETE,
+  resource: PermissionResource.ROLE,
+};
 
 @Controller("roles")
 @UseGuards(JwtAccessTokenGuard, PermissionsGuard)
@@ -33,15 +57,13 @@ export class RoleController {
   // =============================
 
   @Post()
-  @RequirePermissions({
-    action: PermissionAction.CREATE,
-    resource: PermissionResource.ROLE,
-  })
-  createRole(
+  @RequirePermissions(CREATE_ROLE)
+  async createRole(
     @Body() createRoleDto: CreateRoleDto,
     @CurrentUser() currentUser: UserEntity,
   ) {
-    return this.roleService.createRole(createRoleDto, currentUser);
+    const role = await this.roleService.createRole(createRoleDto, currentUser);
+    return RoleResponseDto.fromEntity(role);
   }
 
   // =============================
@@ -49,30 +71,40 @@ export class RoleController {
   // =============================
 
   @Get()
-  @RequirePermissions({
-    action: PermissionAction.READ,
-    resource: PermissionResource.ROLE,
-  })
-  findRolesByQuery(@Query() queryRoleDto: QueryRoleDto) {
-    return this.roleService.findRolesByQuery(queryRoleDto);
+  @RequirePermissions(READ_ROLE)
+  async findRolesByQuery(
+    @Query() queryRoleDto: QueryRoleDto,
+  ): Promise<PaginatedResponse<RoleResponseDto>> {
+    const { data, total } =
+      await this.roleService.findRolesByQuery(queryRoleDto);
+
+    const totalPages = Math.ceil(total / queryRoleDto.limit);
+
+    return {
+      data: data.map((r) => RoleResponseDto.fromEntity(r)),
+      meta: {
+        total,
+        page: queryRoleDto.page,
+        limit: queryRoleDto.limit,
+        totalPages,
+        hasNextPage: queryRoleDto.page < totalPages,
+        hasPreviousPage: queryRoleDto.page > 1,
+      },
+    };
   }
 
   @Get("default")
-  @RequirePermissions({
-    action: PermissionAction.READ,
-    resource: PermissionResource.ROLE,
-  })
-  findDefaultRole() {
-    return this.roleService.findDefaultRole();
+  @RequirePermissions(READ_ROLE)
+  async findDefaultRole() {
+    const role = await this.roleService.findDefaultRole();
+    return RoleResponseDto.fromEntity(role);
   }
 
   @Get(":id")
-  @RequirePermissions({
-    action: PermissionAction.READ,
-    resource: PermissionResource.ROLE,
-  })
-  findRole(@Param("id", ParseUUIDPipe) id: string) {
-    return this.roleService.findRoleDetails(id);
+  @RequirePermissions(READ_ROLE)
+  async findRole(@Param("id", ParseUUIDPipe) id: string) {
+    const role = await this.roleService.findRoleDetails(id);
+    return RoleResponseDto.fromEntity(role);
   }
 
   // =============================
@@ -80,20 +112,17 @@ export class RoleController {
   // =============================
 
   @Patch(":id/default")
-  @RequirePermissions({
-    action: PermissionAction.UPDATE,
-    resource: PermissionResource.ROLE,
-  })
+  @RequirePermissions(UPDATE_ROLE)
   @HttpCode(HttpStatus.OK)
-  toggleDefaultRole(@Param("id", ParseUUIDPipe) id: string) {
-    return this.roleService.toggleDefaultRole(id);
+  toggleDefaultRole(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.roleService.toggleDefaultRole(id, currentUser);
   }
 
   @Post(":id/permissions/:permissionId")
-  @RequirePermissions({
-    action: PermissionAction.UPDATE,
-    resource: PermissionResource.ROLE,
-  })
+  @RequirePermissions(UPDATE_ROLE)
   @HttpCode(HttpStatus.OK)
   addPermissionToRole(
     @Param("id", ParseUUIDPipe) roleId: string,
@@ -112,10 +141,7 @@ export class RoleController {
   // =============================
 
   @Delete(":id")
-  @RequirePermissions({
-    action: PermissionAction.DELETE,
-    resource: PermissionResource.ROLE,
-  })
+  @RequirePermissions(DELETE_ROLE)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteRole(
     @Param("id", ParseUUIDPipe) id: string,
@@ -125,10 +151,7 @@ export class RoleController {
   }
 
   @Delete(":id/permissions/:permissionId")
-  @RequirePermissions({
-    action: PermissionAction.DELETE,
-    resource: PermissionResource.ROLE,
-  })
+  @RequirePermissions(DELETE_ROLE)
   @HttpCode(HttpStatus.NO_CONTENT)
   async removePermissionFromRole(
     @Param("id", ParseUUIDPipe) roleId: string,
@@ -143,10 +166,7 @@ export class RoleController {
   }
 
   @Delete(":id/permissions")
-  @RequirePermissions({
-    action: PermissionAction.UPDATE,
-    resource: PermissionResource.ROLE,
-  })
+  @RequirePermissions(UPDATE_ROLE)
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeAllPermissionsFromRole(
     @Param("id", ParseUUIDPipe) roleId: string,

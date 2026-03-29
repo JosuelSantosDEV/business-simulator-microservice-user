@@ -10,8 +10,8 @@ import { CreateProfileDto } from "./dto/create-profile.dto";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { UserEntity } from "../user/entity/user.entity";
 import { ListProfilesQueryDto } from "./dto/list-profiles-query.dto";
-import { PaginatedResponse } from "src/common/interfaces/pagination-response.interface";
 import { ProfileEntity } from "./entities/profile.entity";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class ProfileService {
@@ -31,13 +31,22 @@ export class ProfileService {
       const existing = await this.profileRepository.findByUserId(
         currentUser.id,
       );
-      if (existing) throw new ConflictException("Você já possui um perfil.");
+      if (existing) {
+        throw new ConflictException({
+          message: "Você já possui um perfil.",
+          code: ErrorCodes.PROFILE_ALREADY_EXISTS,
+        });
+      }
 
       const usernameTaken = await this.profileRepository.findByUsername(
         dto.username,
       );
-      if (usernameTaken)
-        throw new ConflictException("Este username já está em uso.");
+      if (usernameTaken) {
+        throw new ConflictException({
+          message: "Este username já está em uso.",
+          code: ErrorCodes.PROFILE_USERNAME_CONFLICT,
+        });
+      }
 
       return await this.profileRepository.create({
         username: dto.username,
@@ -51,8 +60,12 @@ export class ProfileService {
       });
     } catch (error) {
       if (error instanceof ConflictException) throw error;
-      if (error.code === "23505")
-        throw new ConflictException("Este username já está em uso.");
+      if (error.code === "23505") {
+        throw new ConflictException({
+          message: "Este username já está em uso.",
+          code: ErrorCodes.PROFILE_USERNAME_CONFLICT,
+        });
+      }
       this.logger.error(
         `${new Date(Date.now())} - Erro ao criar perfil: ${error.message}`,
         error.stack,
@@ -67,8 +80,13 @@ export class ProfileService {
 
   async findById(id: string): Promise<ProfileEntity> {
     try {
-      const profile = await this.profileRepository.findById(id);
-      if (!profile) throw new NotFoundException("Perfil não encontrado.");
+      const profile = await this.profileExist(id);
+      if (!profile) {
+        throw new NotFoundException({
+          message: "Perfil não encontrado.",
+          code: ErrorCodes.PROFILE_NOT_FOUND,
+        });
+      }
       return profile;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -82,7 +100,12 @@ export class ProfileService {
   async findMyProfile(currentUser: UserEntity): Promise<ProfileEntity> {
     try {
       const profile = await this.profileRepository.findByUserId(currentUser.id);
-      if (!profile) throw new NotFoundException("Perfil não encontrado.");
+      if (!profile) {
+        throw new NotFoundException({
+          message: "Perfil não encontrado.",
+          code: ErrorCodes.PROFILE_NOT_FOUND,
+        });
+      }
       return profile;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -95,23 +118,9 @@ export class ProfileService {
 
   async findAllByQuery(
     query: ListProfilesQueryDto,
-  ): Promise<PaginatedResponse<ProfileEntity>> {
-    const [profiles, total] =
-      await this.profileRepository.findAllByQuery(query);
-
-    const totalPages = Math.ceil(total / (query.limit ?? 10));
-
-    return {
-      data: profiles,
-      meta: {
-        total,
-        page: query.page ?? 1,
-        limit: query.limit ?? 10,
-        totalPages,
-        hasNextPage: (query.page ?? 1) < totalPages,
-        hasPreviousPage: (query.page ?? 1) > 1,
-      },
-    };
+  ): Promise<{ data: ProfileEntity[]; total: number }> {
+    const [data, total] = await this.profileRepository.findAllByQuery(query);
+    return { data, total };
   }
 
   // ========================================
@@ -124,7 +133,12 @@ export class ProfileService {
   ): Promise<ProfileEntity> {
     try {
       const profile = await this.profileRepository.findByUserId(currentUser.id);
-      if (!profile) throw new NotFoundException("Perfil não encontrado.");
+      if (!profile) {
+        throw new NotFoundException({
+          message: "Perfil não encontrado.",
+          code: ErrorCodes.PROFILE_NOT_FOUND,
+        });
+      }
       await this.profileRepository.update(profile.id, dto);
       return this.profileRepository.findById(profile.id);
     } catch (error) {
@@ -140,8 +154,13 @@ export class ProfileService {
     id: string,
     isVerified: boolean,
   ): Promise<{ message: string }> {
-    const profile = await this.profileRepository.findById(id);
-    if (!profile) throw new NotFoundException("Perfil não encontrado.");
+    const profile = await this.profileExist(id);
+    if (!profile) {
+      throw new NotFoundException({
+        message: "Perfil não encontrado.",
+        code: ErrorCodes.PROFILE_NOT_FOUND,
+      });
+    }
     await this.profileRepository.setVerified(id, isVerified);
     return {
       message: `Perfil ${isVerified ? "verificado" : "desverificado"} com sucesso.`,
@@ -155,7 +174,12 @@ export class ProfileService {
   async deleteMyProfile(currentUser: UserEntity): Promise<void> {
     try {
       const profile = await this.profileRepository.findByUserId(currentUser.id);
-      if (!profile) throw new NotFoundException("Perfil não encontrado.");
+      if (!profile) {
+        throw new NotFoundException({
+          message: "Perfil não encontrado.",
+          code: ErrorCodes.PROFILE_NOT_FOUND,
+        });
+      }
       await this.profileRepository.delete(profile.id);
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -164,5 +188,13 @@ export class ProfileService {
       );
       throw new InternalServerErrorException("Erro ao deletar perfil.");
     }
+  }
+
+  // ------------------------- Private -----------------------------
+
+  private async profileExist(id: string): Promise<ProfileEntity | false> {
+    const profile = await this.profileRepository.findById(id);
+    if (!profile) return false;
+    return profile;
   }
 }

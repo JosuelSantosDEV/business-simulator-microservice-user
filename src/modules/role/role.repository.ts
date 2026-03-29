@@ -1,9 +1,7 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
@@ -16,6 +14,7 @@ import { RoleEntity } from "./entity/role.entity";
 import { PermissionEntity } from "../permission/entity/permission.entity";
 import { CreateRoleDto } from "./dto/create-role.dto";
 import { QueryRoleDto } from "./dto/query-role.dto";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class RoleRepository {
@@ -41,16 +40,6 @@ export class RoleRepository {
     await queryRunner.startTransaction();
 
     try {
-      const existing = await queryRunner.manager.findOne(RoleEntity, {
-        where: { name: createRoleDto.name },
-      });
-
-      if (existing) {
-        throw new ConflictException(
-          `Já existe uma role com o nome "${createRoleDto.name}"`,
-        );
-      }
-
       if (createRoleDto.isDefault) {
         await this.clearDefaultFromAllRoles(queryRunner.manager);
       }
@@ -68,20 +57,19 @@ export class RoleRepository {
     } catch (error) {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof ConflictException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
-      }
+      if (error instanceof ConflictException) throw error;
 
       if (error.code === "23505") {
-        throw new ConflictException("Já existe uma role com esses dados");
+        throw new ConflictException({
+          message: "Já existe uma role com esses dados",
+          code: ErrorCodes.ROLE_NAME_CONFLICT,
+        });
       }
 
-      throw new InternalServerErrorException(
-        "Erro ao criar role. Tente novamente mais tarde.",
-      );
+      throw new InternalServerErrorException({
+        message: "Erro ao criar role. Tente novamente mais tarde.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }
@@ -135,24 +123,33 @@ export class RoleRepository {
     return await queryBuilder.getManyAndCount();
   }
 
-  async findById(id: string): Promise<RoleEntity> {
+  async findById(id: string): Promise<RoleEntity | null> {
     try {
-      const role = await this.RoleRepository.findOne({
-        where: { id },
+      return await this.RoleRepository.findOne({ where: { id } });
+    } catch {
+      throw new InternalServerErrorException({
+        message: "Erro ao buscar role. Tente novamente mais tarde.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
       });
-
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${id}" não encontrada`);
-      }
-
-      return role;
-    } catch (error) {
-      if (error instanceof NotFoundException) throw error;
-
-      throw new InternalServerErrorException(
-        "Erro ao buscar role. Tente novamente mais tarde.",
-      );
     }
+  }
+
+  async findByIdWithPermissions(id: string): Promise<RoleEntity | null> {
+    try {
+      return await this.RoleRepository.findOne({
+        where: { id },
+        relations: { permissions: true },
+      });
+    } catch {
+      throw new InternalServerErrorException({
+        message: "Erro ao buscar role. Tente novamente mais tarde.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
+      });
+    }
+  }
+
+  async findByName(name: string): Promise<RoleEntity | null> {
+    return this.RoleRepository.findOne({ where: { name } });
   }
 
   async findDefault(): Promise<RoleEntity | null> {
@@ -173,10 +170,6 @@ export class RoleRepository {
         where: { id },
       });
 
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${id}" não encontrada`);
-      }
-
       if (role.isDefault) {
         role.isDefault = false;
         await queryRunner.manager.save(RoleEntity, role);
@@ -190,19 +183,13 @@ export class RoleRepository {
       await queryRunner.manager.save(RoleEntity, role);
       await queryRunner.commitTransaction();
       return role;
-    } catch (error) {
+    } catch {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ConflictException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        "Erro ao alternar role padrão. Tente novamente mais tarde.",
-      );
+      throw new InternalServerErrorException({
+        message: "Erro ao alternar role padrão. Tente novamente mais tarde.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }
@@ -212,7 +199,7 @@ export class RoleRepository {
   // ========== DELETE ===========
   // =============================
 
-  async delete(id: string, currentUserIsSystem: boolean): Promise<void> {
+  async delete(id: string): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -222,37 +209,22 @@ export class RoleRepository {
         where: { id },
       });
 
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${id}" não encontrada`);
-      }
-
-      if (role.isSystem && !currentUserIsSystem) {
-        throw new ForbiddenException(
-          `Não é possível deletar a role "${role.name}" pois ela é uma role de sistema`,
-        );
-      }
-
       await queryRunner.manager.remove(RoleEntity, role);
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
-      }
-
       if (error.code === "23503") {
-        throw new ConflictException(
-          "Não é possível deletar esta role pois ela está em uso",
-        );
+        throw new ConflictException({
+          message: "Não é possível deletar esta role pois ela está em uso",
+          code: ErrorCodes.ROLE_IN_USE,
+        });
       }
 
-      throw new InternalServerErrorException(
-        "Erro ao deletar role. Tente novamente mais tarde.",
-      );
+      throw new InternalServerErrorException({
+        message: "Erro ao deletar role. Tente novamente mais tarde.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }
@@ -261,7 +233,6 @@ export class RoleRepository {
   async addPermissionToRole(
     roleId: string,
     permissionId: string,
-    currentUserIsSystem: boolean,
   ): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -273,50 +244,21 @@ export class RoleRepository {
         relations: ["permissions"],
       });
 
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
-      }
-
-      if (role.isSystem && !currentUserIsSystem) {
-        throw new ForbiddenException(
-          `Não é possível modificar a role "${role.name}" pois ela é uma role de sistema`,
-        );
-      }
-
       const permission = await queryRunner.manager.findOne(PermissionEntity, {
         where: { id: permissionId },
       });
 
-      if (!permission) {
-        throw new NotFoundException(
-          `Permissão com ID "${permissionId}" não encontrada`,
-        );
-      }
-
-      const alreadyLinked = role.permissions.some((p) => p.id === permissionId);
-      if (alreadyLinked) {
-        throw new ConflictException(
-          `A permissão "${permission.name}" já está associada à role "${role.name}"`,
-        );
-      }
-
       role.permissions.push(permission);
       await queryRunner.manager.save(RoleEntity, role);
       await queryRunner.commitTransaction();
-    } catch (error) {
+    } catch {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ConflictException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        "Erro ao adicionar permissão à role. Tente novamente mais tarde.",
-      );
+      throw new InternalServerErrorException({
+        message:
+          "Erro ao adicionar permissão à role. Tente novamente mais tarde.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }
@@ -325,38 +267,13 @@ export class RoleRepository {
   async removePermissionFromRole(
     roleId: string,
     permissionId: string,
-    currentUserIsSystem: boolean,
   ): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const role = await queryRunner.manager.findOne(RoleEntity, {
-        where: { id: roleId },
-      });
-
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
-      }
-
-      if (role.isSystem && !currentUserIsSystem) {
-        throw new ForbiddenException(
-          `Não é possível modificar a role "${role.name}" pois ela é uma role de sistema`,
-        );
-      }
-
-      const permission = await queryRunner.manager.findOne(PermissionEntity, {
-        where: { id: permissionId },
-      });
-
-      if (!permission) {
-        throw new NotFoundException(
-          `Permissão com ID "${permissionId}" não encontrada`,
-        );
-      }
-
-      const result = await queryRunner.manager
+      await queryRunner.manager
         .createQueryBuilder()
         .delete()
         .from("role_permissions")
@@ -364,54 +281,26 @@ export class RoleRepository {
         .andWhere("permission_id = :permissionId", { permissionId })
         .execute();
 
-      if (result.affected === 0) {
-        throw new NotFoundException(
-          `A permissão "${permission.name}" não está associada à role "${role.name}"`,
-        );
-      }
-
       await queryRunner.commitTransaction();
-    } catch (error) {
+    } catch {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        "Erro ao remover permissão da role. Tente novamente mais tarde.",
-      );
+      throw new InternalServerErrorException({
+        message:
+          "Erro ao remover permissão da role. Tente novamente mais tarde.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }
   }
 
-  async removeAllPermissionsFromRole(
-    roleId: string,
-    currentUserIsSystem: boolean,
-  ): Promise<void> {
+  async removeAllPermissionsFromRole(roleId: string): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const role = await queryRunner.manager.findOne(RoleEntity, {
-        where: { id: roleId },
-      });
-
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
-      }
-
-      if (role.isSystem && !currentUserIsSystem) {
-        throw new ForbiddenException(
-          `Não é possível modificar a role "${role.name}" pois ela é uma role de sistema`,
-        );
-      }
-
       await queryRunner.manager
         .createQueryBuilder()
         .delete()
@@ -420,19 +309,13 @@ export class RoleRepository {
         .execute();
 
       await queryRunner.commitTransaction();
-    } catch (error) {
+    } catch {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        "Erro ao remover todas permissões da role",
-      );
+      throw new InternalServerErrorException({
+        message: "Erro ao remover todas permissões da role.",
+        code: ErrorCodes.ROLE_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }

@@ -1,17 +1,10 @@
-// src/users/users.repository.ts
-
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-} from "@nestjs/common";
+import { Injectable, InternalServerErrorException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import { UserEntity } from "./entity/user.entity";
 import { RoleEntity } from "../role/entity/role.entity";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class UsersRepository {
@@ -29,10 +22,19 @@ export class UsersRepository {
   // ================= READ =================
   // ========================================
 
-  async findUserById(id: string): Promise<UserEntity | null> {
+  async findUserByIdWithRolesAndPermissions(
+    id: string,
+  ): Promise<UserEntity | null> {
     return this.userRepository.findOne({
       where: { id },
       relations: { roles: { permissions: true } },
+    });
+  }
+
+  async findUserByIdWithRoles(id: string): Promise<UserEntity | null> {
+    return this.userRepository.findOne({
+      where: { id },
+      relations: { roles: true },
     });
   }
 
@@ -56,7 +58,7 @@ export class UsersRepository {
     return this.userRepository
       .createQueryBuilder(u)
       .addSelect(`${u}.password`)
-      .leftJoinAndSelect(`${u}.roles`, "roles") // ← adicionar isso
+      .leftJoinAndSelect(`${u}.roles`, "roles")
       .where(`${u}.email = :email`, { email })
       .getOne();
   }
@@ -86,12 +88,6 @@ export class UsersRepository {
       .addSelect([`${u}.passwordResetToken`, `${u}.passwordResetExpiresAt`])
       .where(`${u}.passwordResetToken = :token`, { token })
       .getOne();
-  }
-
-  async findAll(): Promise<UserEntity[]> {
-    return this.userRepository.find({
-      relations: { roles: { permissions: true } },
-    });
   }
 
   async findAllByQuery(
@@ -160,8 +156,15 @@ export class UsersRepository {
   // ========================================
 
   async create(data: Partial<UserEntity>): Promise<UserEntity> {
-    const user = this.userRepository.create(data);
-    return this.userRepository.save(user);
+    try {
+      const user = this.userRepository.create(data);
+      return await this.userRepository.save(user);
+    } catch {
+      throw new InternalServerErrorException({
+        message: "Erro ao criar usuário. Tente novamente mais tarde.",
+        code: ErrorCodes.USER_INTERNAL_ERROR,
+      });
+    }
   }
 
   // ========================================
@@ -169,26 +172,43 @@ export class UsersRepository {
   // ========================================
 
   async softDelete(id: string): Promise<void> {
-    await this.userRepository.softDelete(id);
+    try {
+      await this.userRepository.softDelete(id);
+    } catch {
+      throw new InternalServerErrorException({
+        message: "Erro ao remover usuário. Tente novamente mais tarde.",
+        code: ErrorCodes.USER_INTERNAL_ERROR,
+      });
+    }
   }
 
   async hardDelete(id: string): Promise<void> {
-    await this.userRepository.delete(id);
+    try {
+      await this.userRepository.delete(id);
+    } catch {
+      throw new InternalServerErrorException({
+        message: "Erro ao excluir usuário permanentemente.",
+        code: ErrorCodes.USER_INTERNAL_ERROR,
+      });
+    }
   }
 
   async restore(id: string): Promise<void> {
-    await this.userRepository.restore(id);
+    try {
+      await this.userRepository.restore(id);
+    } catch {
+      throw new InternalServerErrorException({
+        message: "Erro ao restaurar usuário.",
+        code: ErrorCodes.USER_INTERNAL_ERROR,
+      });
+    }
   }
 
   // ========================================
   // ============== UPDATE ==================
   // ========================================
 
-  async addRoleToUser(
-    userId: string,
-    roleId: string,
-    currentUserIsSystem: boolean,
-  ): Promise<void> {
+  async addRoleToUser(userId: string, roleId: string): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -199,91 +219,34 @@ export class UsersRepository {
         relations: ["roles"],
       });
 
-      if (!user) {
-        throw new NotFoundException(
-          `Usuário com ID "${userId}" não encontrado`,
-        );
-      }
-
       const role = await queryRunner.manager.findOne(RoleEntity, {
         where: { id: roleId },
       });
-
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
-      }
-
-      if (role.isSystem && !currentUserIsSystem) {
-        throw new ForbiddenException(
-          `Apenas usuários de sistema podem atribuir a role "${role.name}"`,
-        );
-      }
-
-      const alreadyHasRole = user.roles.some((r) => r.id === roleId);
-      if (alreadyHasRole) {
-        throw new ConflictException(
-          `O usuário já possui a role "${role.name}"`,
-        );
-      }
 
       user.roles.push(role);
       await queryRunner.manager.save(UserEntity, user);
 
       await queryRunner.commitTransaction();
-    } catch (error) {
+    } catch {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ConflictException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        "Erro ao adicionar role ao usuário. Tente novamente mais tarde.",
-      );
+      throw new InternalServerErrorException({
+        message:
+          "Erro ao adicionar role ao usuário. Tente novamente mais tarde.",
+        code: ErrorCodes.USER_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }
   }
 
-  async removeRoleFromUser(
-    userId: string,
-    roleId: string,
-    currentUserIsSystem: boolean,
-  ): Promise<void> {
+  async removeRoleFromUser(userId: string, roleId: string): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const user = await queryRunner.manager.findOne(UserEntity, {
-        where: { id: userId },
-      });
-
-      if (!user) {
-        throw new NotFoundException(
-          `Usuário com ID "${userId}" não encontrado`,
-        );
-      }
-
-      const role = await queryRunner.manager.findOne(RoleEntity, {
-        where: { id: roleId },
-      });
-
-      if (!role) {
-        throw new NotFoundException(`Role com ID "${roleId}" não encontrada`);
-      }
-
-      if (role.isSystem && !currentUserIsSystem) {
-        throw new ForbiddenException(
-          `Apenas usuários de sistema podem remover a role "${role.name}"`,
-        );
-      }
-
-      const result = await queryRunner.manager
+      await queryRunner.manager
         .createQueryBuilder()
         .delete()
         .from("user_roles")
@@ -291,32 +254,27 @@ export class UsersRepository {
         .andWhere("role_id = :roleId", { roleId })
         .execute();
 
-      if (result.affected === 0) {
-        throw new NotFoundException(
-          `O usuário não possui a role "${role.name}"`,
-        );
-      }
-
       await queryRunner.commitTransaction();
-    } catch (error) {
+    } catch {
       await queryRunner.rollbackTransaction();
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        "Erro ao remover role do usuário. Tente novamente mais tarde.",
-      );
+      throw new InternalServerErrorException({
+        message: "Erro ao remover role do usuário. Tente novamente mais tarde.",
+        code: ErrorCodes.USER_INTERNAL_ERROR,
+      });
     } finally {
       await queryRunner.release();
     }
   }
 
   async update(id: string, data: Partial<UserEntity>): Promise<void> {
-    await this.userRepository.update(id, data);
+    try {
+      await this.userRepository.update(id, data);
+    } catch {
+      throw new InternalServerErrorException({
+        message: "Erro ao atualizar usuário. Tente novamente mais tarde.",
+        code: ErrorCodes.USER_INTERNAL_ERROR,
+      });
+    }
   }
 }

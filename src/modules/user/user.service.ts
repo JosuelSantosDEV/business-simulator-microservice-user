@@ -15,6 +15,9 @@ import { UserEntity } from "./entity/user.entity";
 import { UserStatus } from "src/common/enums/user-status.enum";
 import { HashingService } from "src/common/services/hashing.service";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
+import { userHasRole } from "src/common/helpers/role.helper";
+import { userIsSystem } from "src/common/helpers/user-is-system.helper";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class UserService {
@@ -51,7 +54,12 @@ export class UserService {
         createUserDto.email,
       );
 
-      if (exists) throw new ConflictException("Email já cadastrado");
+      if (exists) {
+        throw new ConflictException({
+          message: "Email já cadastrado",
+          code: ErrorCodes.USER_EMAIL_CONFLICT,
+        });
+      }
 
       const hashed = await this.hashingService.hash(createUserDto.password);
 
@@ -65,7 +73,10 @@ export class UserService {
       if (error instanceof ConflictException) throw error;
 
       if (error.code === "23505") {
-        throw new ConflictException("Email já cadastrado");
+        throw new ConflictException({
+          message: "Email já cadastrado",
+          code: ErrorCodes.USER_EMAIL_CONFLICT,
+        });
       }
 
       this.logger.error(
@@ -88,7 +99,12 @@ export class UserService {
       const exists = await this.userRepository.findUserByEmail(
         createUserDto.email,
       );
-      if (exists) throw new ConflictException("Email já cadastrado");
+      if (exists) {
+        throw new ConflictException({
+          message: "Email já cadastrado",
+          code: ErrorCodes.USER_EMAIL_CONFLICT,
+        });
+      }
 
       const defaultRole = await this.roleService.findDefaultRole();
       const hashed = await this.hashingService.hash(createUserDto.password);
@@ -102,8 +118,12 @@ export class UserService {
       });
     } catch (error) {
       if (error instanceof ConflictException) throw error;
-      if (error.code === "23505")
-        throw new ConflictException("Email já cadastrado");
+      if (error.code === "23505") {
+        throw new ConflictException({
+          message: "Email já cadastrado",
+          code: ErrorCodes.USER_EMAIL_CONFLICT,
+        });
+      }
       this.logger.error(
         `${new Date(Date.now())} - Erro ao criar usuário: ${error.message}`,
         error.stack,
@@ -120,8 +140,14 @@ export class UserService {
 
   async findById(id: string): Promise<UserEntity> {
     try {
-      const user = await this.userRepository.findUserById(id);
-      if (!user) throw new NotFoundException("Usuário não encontrado");
+      const user =
+        await this.userRepository.findUserByIdWithRolesAndPermissions(id);
+      if (!user) {
+        throw new NotFoundException({
+          message: "Usuário não encontrado",
+          code: ErrorCodes.USER_NOT_FOUND,
+        });
+      }
       return user;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -135,7 +161,12 @@ export class UserService {
 
   async findByIdWithRefreshToken(id: string): Promise<UserEntity> {
     const user = await this.userRepository.findUserByIdWithRefreshToken(id);
-    if (!user) throw new NotFoundException("Usuário não encontrado");
+    if (!user) {
+      throw new NotFoundException({
+        message: "Usuário não encontrado",
+        code: ErrorCodes.USER_NOT_FOUND,
+      });
+    }
     return user;
   }
 
@@ -173,12 +204,34 @@ export class UserService {
     roleId: string,
     currentUser: UserEntity,
   ): Promise<{ message: string }> {
-    const currentUserIsSystem = currentUser?.roles?.some((r) => r.isSystem);
-    await this.userRepository.addRoleToUser(
-      userId,
-      roleId,
-      currentUserIsSystem,
-    );
+    const currentUserIsSystem = userIsSystem(currentUser);
+
+    const targetUser = await this.userExist(userId);
+    if (!targetUser) {
+      throw new NotFoundException({
+        message: "Usuário não encontrado",
+        code: ErrorCodes.USER_NOT_FOUND,
+      });
+    }
+
+    const role = await this.roleService.findRoleDetails(roleId);
+
+    if (role.isSystem && !currentUserIsSystem) {
+      throw new ForbiddenException({
+        message: `Apenas usuários de sistema podem atribuir a role "${role.name}"`,
+        code: ErrorCodes.ROLE_SYSTEM_FORBIDDEN,
+      });
+    }
+
+    const alreadyHasRole = userHasRole(targetUser, role.id);
+    if (alreadyHasRole) {
+      throw new ConflictException({
+        message: `O usuário já possui a role "${role.name}"`,
+        code: ErrorCodes.ROLE_ALREADY_ASSIGNED,
+      });
+    }
+
+    await this.userRepository.addRoleToUser(userId, roleId);
     return { message: "Role adicionada ao usuário com sucesso" };
   }
 
@@ -187,12 +240,34 @@ export class UserService {
     roleId: string,
     currentUser: UserEntity,
   ): Promise<void> {
-    const currentUserIsSystem = currentUser?.roles?.some((r) => r.isSystem);
-    await this.userRepository.removeRoleFromUser(
-      userId,
-      roleId,
-      currentUserIsSystem,
-    );
+    const currentUserIsSystem = userIsSystem(currentUser);
+
+    const targetUser = await this.userExist(userId);
+    if (!targetUser) {
+      throw new NotFoundException({
+        message: "Usuário não encontrado",
+        code: ErrorCodes.USER_NOT_FOUND,
+      });
+    }
+
+    const role = await this.roleService.findRoleDetails(roleId);
+
+    if (role.isSystem && !currentUserIsSystem) {
+      throw new ForbiddenException({
+        message: `Apenas usuários de sistema podem remover a role "${role.name}"`,
+        code: ErrorCodes.ROLE_SYSTEM_FORBIDDEN,
+      });
+    }
+
+    const hasRole = userHasRole(targetUser, role.id);
+    if (!hasRole) {
+      throw new NotFoundException({
+        message: `O usuário não possui a role "${role.name}"`,
+        code: ErrorCodes.ROLE_NOT_ASSIGNED,
+      });
+    }
+
+    await this.userRepository.removeRoleFromUser(userId, roleId);
   }
 
   async updateRefreshToken(id: string, token: string | null): Promise<void> {
@@ -275,13 +350,23 @@ export class UserService {
   ): Promise<void> {
     try {
       const user = await this.userRepository.findByIdWithPassword(id);
-      if (!user) throw new NotFoundException("Usuário não encontrado");
+      if (!user) {
+        throw new NotFoundException({
+          message: "Usuário não encontrado",
+          code: ErrorCodes.USER_NOT_FOUND,
+        });
+      }
 
       const match = await this.hashingService.compare(
         currentPassword,
         user.password,
       );
-      if (!match) throw new BadRequestException("Senha atual inválida");
+      if (!match) {
+        throw new BadRequestException({
+          message: "Senha atual inválida",
+          code: ErrorCodes.USER_INVALID_CURRENT_PASSWORD,
+        });
+      }
 
       const hashed = await this.hashingService.hash(newPassword);
       await this.resetPassword(id, hashed);
@@ -308,13 +393,14 @@ export class UserService {
   ): Promise<{ message: string }> {
     const target = await this.findById(targetId);
 
-    const currentUserIsSystem = currentUser.roles?.some((r) => r.isSystem);
-    const targetIsSystem = target.roles?.some((r) => r.isSystem);
+    const currentUserIsSystem = userIsSystem(currentUser);
+    const targetIsSystem = userIsSystem(target);
 
     if (targetIsSystem && !currentUserIsSystem) {
-      throw new ForbiddenException(
-        "Você não tem permissão para alterar o status deste usuário.",
-      );
+      throw new ForbiddenException({
+        message: "Você não tem permissão para alterar o status deste usuário.",
+        code: ErrorCodes.USER_SYSTEM_FORBIDDEN,
+      });
     }
 
     await this.userRepository.update(targetId, { status: newStatus });
@@ -334,26 +420,61 @@ export class UserService {
   // ================ DELETE ================
   // ========================================
 
-  async remove(currentUser: UserEntity): Promise<void> {
-    const id = currentUser.id;
+  async removeMe(currentUser: UserEntity): Promise<void> {
     try {
-      const user = await this.findById(id);
+      if (
+        !(
+          currentUser.status == UserStatus.ACTIVE ||
+          currentUser.status == UserStatus.PENDING
+        )
+      ) {
+        throw new ForbiddenException({
+          message:
+            "Ação não permitida, conta desativada ou banida, entre em contato com o suporte",
+          code: ErrorCodes.USER_ACCOUNT_RESTRICTED,
+        });
+      }
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
 
-      const currentIsSystem = currentUser.roles?.some((r) => r.isSystem);
-      const targetIsSystem = user.roles?.some((r) => r.isSystem);
+      throw new InternalServerErrorException("Erro ao remover usuário");
+    }
+  }
+
+  async removeById(id: string, currentUser: UserEntity): Promise<void> {
+    try {
+      if (currentUser.status != UserStatus.ACTIVE) {
+        throw new ForbiddenException({
+          message:
+            "Ação não permitida, conta desativada ou banida, entre em contato com o suporte",
+          code: ErrorCodes.USER_ACCOUNT_RESTRICTED,
+        });
+      }
+
+      const user = await this.userExist(id);
+      if (!user) {
+        throw new NotFoundException({
+          message: "Usuário não encontrado",
+          code: ErrorCodes.USER_NOT_FOUND,
+        });
+      }
+
+      const currentIsSystem = userIsSystem(currentUser);
+      const targetIsSystem = userIsSystem(user);
 
       if (targetIsSystem && !currentIsSystem) {
-        throw new ForbiddenException(
-          "Você não tem permissão para remover este usuário.",
-        );
+        throw new ForbiddenException({
+          message: "Você não tem permissão para remover este usuário.",
+          code: ErrorCodes.USER_SYSTEM_FORBIDDEN,
+        });
       }
 
-      if (!user.emailVerifiedAt) {
-        await this.userRepository.hardDelete(id);
-        return;
-      }
-
-      await this.userRepository.softDelete(id);
+      await this.remove(user as UserEntity);
     } catch (error) {
       if (
         error instanceof NotFoundException ||
@@ -369,5 +490,22 @@ export class UserService {
   async restore(id: string): Promise<UserEntity> {
     await this.userRepository.restore(id);
     return this.findById(id);
+  }
+
+  // ------------------------- Private -----------------------------
+
+  private async userExist(id: string): Promise<UserEntity | false> {
+    const user = await this.userRepository.findUserByIdWithRoles(id);
+    if (!user) return false;
+    return user;
+  }
+
+  private async remove(user: UserEntity): Promise<void> {
+    if (!user.emailVerifiedAt) {
+      await this.userRepository.hardDelete(user.id);
+      return;
+    }
+
+    await this.userRepository.softDelete(user.id);
   }
 }

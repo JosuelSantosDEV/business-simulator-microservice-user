@@ -8,7 +8,7 @@ import { ListProfilesQueryDto } from "./dto/list-profiles-query.dto";
 export class ProfileRepository {
   constructor(
     @InjectRepository(ProfileEntity)
-    private readonly repo: Repository<ProfileEntity>,
+    private readonly profileRepository: Repository<ProfileEntity>,
   ) {}
 
   private readonly PROFILE_ALIAS = "profile";
@@ -18,14 +18,14 @@ export class ProfileRepository {
   // ========================================
 
   async findById(id: string): Promise<ProfileEntity | null> {
-    return this.repo.findOne({
+    return this.profileRepository.findOne({
       where: { id },
       relations: { user: true },
     });
   }
 
   async findByUserId(userId: string): Promise<ProfileEntity | null> {
-    return this.repo
+    return this.profileRepository
       .createQueryBuilder(this.PROFILE_ALIAS)
       .innerJoinAndSelect(`${this.PROFILE_ALIAS}.user`, "user")
       .where("user.id = :userId", { userId })
@@ -33,7 +33,7 @@ export class ProfileRepository {
   }
 
   async findByUsername(username: string): Promise<ProfileEntity | null> {
-    return this.repo.findOne({ where: { username } });
+    return this.profileRepository.findOne({ where: { username } });
   }
 
   async findAllByQuery(
@@ -52,7 +52,7 @@ export class ProfileRepository {
 
     const skip = (page - 1) * limit;
 
-    const qb = this.repo
+    const qb = this.profileRepository
       .createQueryBuilder(this.PROFILE_ALIAS)
       .innerJoinAndSelect(`${this.PROFILE_ALIAS}.user`, "user");
 
@@ -80,7 +80,6 @@ export class ProfileRepository {
       });
     }
 
-    // Ordenação dinâmica usando o alias
     qb.orderBy(`${this.PROFILE_ALIAS}.${sortBy}`, sortOrder)
       .skip(skip)
       .take(limit);
@@ -93,8 +92,8 @@ export class ProfileRepository {
   // ========================================
 
   async create(data: Partial<ProfileEntity>): Promise<ProfileEntity> {
-    const profile = this.repo.create(data);
-    return this.repo.save(profile);
+    const profile = this.profileRepository.create(data);
+    return this.profileRepository.save(profile);
   }
 
   // ========================================
@@ -102,11 +101,11 @@ export class ProfileRepository {
   // ========================================
 
   async update(id: string, data: Partial<ProfileEntity>): Promise<void> {
-    await this.repo.update(id, data);
+    await this.profileRepository.update(id, data);
   }
 
   async setVerified(id: string, isVerified: boolean): Promise<void> {
-    await this.repo.update(id, { isVerified });
+    await this.profileRepository.update(id, { isVerified });
   }
 
   // ========================================
@@ -114,6 +113,6 @@ export class ProfileRepository {
   // ========================================
 
   async delete(id: string): Promise<void> {
-    await this.repo.delete(id);
+    await this.profileRepository.delete(id);
   }
 }

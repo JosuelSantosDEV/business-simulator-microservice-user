@@ -1,5 +1,3 @@
-// src/modules/permission/dto/create-permission.dto.ts
-
 import {
   IsEnum,
   IsNotEmpty,

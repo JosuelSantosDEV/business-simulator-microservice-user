@@ -9,6 +9,7 @@ import { RequiredPermission } from "../../../common/decorators/require-permissio
 import { UserEntity } from "src/modules/user/entity/user.entity";
 import { PERMISSIONS_KEY } from "src/common/constants/auth.constant";
 import { userHasPermission } from "src/common/helpers/permission.helper";
+import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -24,14 +25,22 @@ export class PermissionsGuard implements CanActivate {
 
     const { user }: { user: UserEntity } = context.switchToHttp().getRequest();
 
-    if (!user) throw new ForbiddenException("Não autenticado");
+    if (!user) {
+      throw new ForbiddenException({
+        message: "Não autenticado",
+        code: ErrorCodes.AUTH_INVALID_CREDENTIALS,
+      });
+    }
 
     const hasAll = required.every(({ action, resource }) =>
       userHasPermission(user, action, resource),
     );
 
     if (!hasAll) {
-      throw new ForbiddenException("Sem permissão para esta ação");
+      throw new ForbiddenException({
+        message: "Sem permissão para esta ação",
+        code: ErrorCodes.AUTH_ACCOUNT_NO_HAS_PERMISSION,
+      });
     }
 
     return true;

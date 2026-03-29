@@ -1,5 +1,3 @@
-// src/auth/auth.controller.ts
-
 import {
   Controller,
   Post,
@@ -15,6 +13,7 @@ import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { PublicRoute } from "../../common/decorators/public-route.decorator";
 import { JwtRefreshTokenGuard } from "./guards/jwt-refresh-token.guard";
+import { JwtAnyTokenGuard } from "./guards/jwt-any-token.guard";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 
 @Controller("auth")
@@ -39,7 +38,6 @@ export class AuthController {
   @Post("forgot-password")
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() dto: ForgotPasswordDto) {
-    // sempre retorna OK para não expor se o email existe
     return this.authService.forgotPassword(dto.email);
   }
 
@@ -50,7 +48,6 @@ export class AuthController {
     return this.authService.resetPassword(dto);
   }
 
-  // usa o refresh guard aqui, não o JWT comum
   @PublicRoute()
   @UseGuards(JwtRefreshTokenGuard)
   @Post("refresh")
@@ -59,9 +56,17 @@ export class AuthController {
     return this.authService.refresh(user.id, user.refreshToken);
   }
 
+  @PublicRoute()
+  @UseGuards(JwtAnyTokenGuard)
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
   logout(@CurrentUser("id") userId: string) {
     return this.authService.logout(userId);
   }
 }
+
+// Verificar se a estratégia esta bloqueando usuários que não estão ativados ou pending
+// testar aplicação
+// Sistema de email para verificar usuário
+// Cache para usuário - roles - permissoes
+// Cache para sessões de refresh-token

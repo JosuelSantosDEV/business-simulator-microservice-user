@@ -4,12 +4,18 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
-import { JWT_REFRESH_STRATEGY } from "src/common/constants/strategies-key.constant";
+import {
+  JWT_STRATEGY,
+  JWT_REFRESH_STRATEGY,
+} from "src/common/constants/strategies-key.constant";
 import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 import { ErrorCodes } from "src/common/utils/error-codes.utils";
 
 @Injectable()
-export class JwtRefreshTokenGuard extends AuthGuard(JWT_REFRESH_STRATEGY) {
+export class JwtAnyTokenGuard extends AuthGuard([
+  JWT_STRATEGY,
+  JWT_REFRESH_STRATEGY,
+]) {
   canActivate(context: ExecutionContext) {
     return super.canActivate(context);
   }
@@ -17,20 +23,24 @@ export class JwtRefreshTokenGuard extends AuthGuard(JWT_REFRESH_STRATEGY) {
   handleRequest<TUser = unknown>(
     err: unknown,
     user: TUser | false | null,
-    info?: Error,
+    info?: unknown,
   ): TUser {
     if (user) return user;
 
-    if (info instanceof TokenExpiredError) {
+    const infos = Array.isArray(info) ? info : [info];
+
+    const hasExpired = infos.some((i) => i instanceof TokenExpiredError);
+    if (hasExpired) {
       throw new UnauthorizedException({
-        message: "Refresh token expirado, faça login novamente",
+        message: "Token expirado",
         code: ErrorCodes.AUTH_EXPIRED_REFRESH_TOKEN,
       });
     }
 
-    if (info instanceof JsonWebTokenError) {
+    const hasInvalid = infos.some((i) => i instanceof JsonWebTokenError);
+    if (hasInvalid) {
       throw new UnauthorizedException({
-        message: "Refresh token inválido",
+        message: "Token inválido",
         code: ErrorCodes.AUTH_INVALID_REFRESH_TOKEN,
       });
     }
@@ -38,7 +48,7 @@ export class JwtRefreshTokenGuard extends AuthGuard(JWT_REFRESH_STRATEGY) {
     if (err instanceof Error) throw err;
 
     throw new UnauthorizedException({
-      message: "Refresh token não encontrado",
+      message: "Token não encontrado",
       code: ErrorCodes.AUTH_INVALID_REFRESH_TOKEN,
     });
   }

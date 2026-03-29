@@ -3,6 +3,7 @@
 Base path: `/auth`
 
 ## Regras gerais
+
 - `login obrigatório?` Não para rotas com `@PublicRoute()`.
 - `permissão RBAC?` Não (nenhuma rota de `auth` usa `@RequirePermissions`).
 - `autenticação`:
@@ -13,6 +14,7 @@ Base path: `/auth`
 ## Rotas
 
 ### `POST /auth/login`
+
 - Descrição: Autentica o usuário e retorna os tokens de sessão.
 - Login: Não
 - Permissão: Não
@@ -24,6 +26,7 @@ Base path: `/auth`
 - Status: `200`
 
 ### `POST /auth/verify-email`
+
 - Descrição: Valida o token de verificação e ativa a conta do usuário.
 - Login: Não
 - Permissão: Não
@@ -34,6 +37,7 @@ Base path: `/auth`
 - Status: `200`
 
 ### `POST /auth/forgot-password`
+
 - Descrição: Inicia o fluxo de recuperação de senha sem revelar existência de email.
 - Login: Não
 - Permissão: Não
@@ -44,6 +48,7 @@ Base path: `/auth`
 - Status: `200`
 
 ### `POST /auth/reset-password`
+
 - Descrição: Redefine a senha a partir de um token válido de recuperação.
 - Login: Não
 - Permissão: Não
@@ -55,6 +60,7 @@ Base path: `/auth`
 - Status: `200`
 
 ### `POST /auth/refresh`
+
 - Descrição: Gera novos tokens com base no refresh token válido.
 - Login: Não (rota pública), mas exige refresh token válido no guard
 - Permissão: Não
@@ -64,6 +70,7 @@ Base path: `/auth`
 - Status: `200`
 
 ### `POST /auth/logout`
+
 - Descrição: Encerra a sessão do usuário autenticado invalidando o refresh token.
 - Login: Sim (JWT de acesso)
 - Permissão: Não
@@ -71,3 +78,4 @@ Base path: `/auth`
 - Params: nenhum
 - Query: nenhuma
 - Status: `204`
+
